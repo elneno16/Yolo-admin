@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yolo - Control de Inventario</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="top-header">
+            <div class="logo-container">
+                <div class="yolo-css-logo" title="Yolo Ven">
+                    <div class="yolo-text">Y<span class="dot-o">O</span>L<span class="dot-o">O</span></div>
+                    <div class="ven-container">
+                        <span class="ven-text">VEN</span>
+                        <span class="ven-dot"></span>
+                    </div>
+                </div>
+                <h1>Panel de Inventario</h1>
+            </div>
+            <div class="search-container">
+                <i class="fa-solid fa-search search-icon"></i>
+                <input type="text" id="searchInput" placeholder="Buscar producto por código, equipo, etc...">
+            </div>
+            <div class="main-actions">
+                <button class="btn btn-secondary" id="btnHistory">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Historial
+                </button>
+                <button class="btn btn-secondary" id="btnClientsBank" style="background:#2b2d42; color:#fff;">
+                    <i class="fa-solid fa-users"></i> Banco de Clientes
+                </button>
+                <button class="btn btn-info" id="btnReport">
+                    <i class="fa-solid fa-file-invoice"></i> Reporte
+                </button>
+                <button class="btn btn-primary" id="btnRegisterProduct">
+                    <i class="fa-solid fa-plus"></i> Registro de Producto
+                </button>
+                <button class="btn btn-success" id="btnEntries">
+                    <i class="fa-solid fa-arrow-down-to-line"></i> Entradas
+                </button>
+                <button class="btn btn-warning" id="btnEditEntry">
+                    <i class="fa-solid fa-pen-to-square"></i> Editar Entrada
+                </button>
+                <button class="btn btn-danger" id="btnExits">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i> Salidas
+                </button>
+                <button class="btn btn-danger" id="btnOpenDelete" title="Eliminar Producto">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Summary Stats -->
+        <div class="summary-stats">
+            <div class="stat-box">
+                <span class="stat-label">Total Producto:</span>
+                <span class="stat-value" id="count-total">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Total Camisetas:</span>
+                <span class="stat-value" id="count-camisetas">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Total Entradas:</span>
+                <span class="stat-value" id="count-entradas-total">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Entradas Mes Actual:</span>
+                <span class="stat-value" id="count-entradas-mes">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Total Salidas:</span>
+                <span class="stat-value" id="count-salidas-total">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Salidas Mes Actual:</span>
+                <span class="stat-value" id="count-salidas-mes">0</span>
+            </div>
+        </div>
+
+        <!-- Filters (Mini-ventanas de control) -->
+        <section class="filters-section">
+            <div class="filter-card active" data-filter="todos">
+                <h3>Todos</h3>
+            </div>
+            <div class="filter-card" data-filter="talla-nino">
+                <h3>Talla Niño</h3>
+                <span>(6,8,10,12,14,16)</span>
+            </div>
+            <div class="filter-card" data-filter="talla-adulto">
+                <h3>Talla Adulto</h3>
+                <span>(S,M,L,XL,XXL)</span>
+            </div>
+            <div class="filter-card" data-filter="gorras">
+                <h3>Gorras</h3>
+            </div>
+            <div class="filter-card" data-filter="solo-s">
+                <h3>Solo S</h3>
+            </div>
+            <div class="filter-card" data-filter="solo-m">
+                <h3>Solo M</h3>
+            </div>
+            <div class="filter-card" data-filter="solo-l">
+                <h3>Solo L</h3>
+            </div>
+            <div class="filter-card" data-filter="solo-xl">
+                <h3>Solo XL</h3>
+            </div>
+            <div class="filter-card" data-filter="manga-larga">
+                <h3>Manga Larga</h3>
+            </div>
+            <div class="filter-card" data-filter="sin-foto" style="border: 2px dashed var(--gray); background: rgba(0,0,0,0.03);">
+                <h3><i class="fa-solid fa-camera-slash"></i> Sin Foto</h3>
+                <span style="font-size: 10px;">Pendiente de cargar</span>
+            </div>
+            <!-- Botones de Historial Mes a Mes -->
+            <div class="filter-card history-action-card" id="btnHistorialEntradas" style="background: var(--success); color: white;">
+                <h3><i class="fa-solid fa-list-check"></i> Historial Entradas</h3>
+            </div>
+            <div class="filter-card history-action-card" id="btnHistorialSalidas" style="background: var(--danger); color: white;">
+                <h3><i class="fa-solid fa-cart-shopping"></i> Historial Salidas</h3>
+            </div>
+        </section>
+        
+        <!-- Panel de Filtros de Entrada (Desplegable) -->
+        <div id="entryFilterPanel" class="hidden" style="background: var(--glass-bg); backdrop-filter: blur(10px); border: 1px solid var(--glass-border); border-radius: 16px; padding: 25px; margin-bottom: 20px; box-shadow: var(--shadow); animation: slideDown 0.4s ease;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3 style="font-size: 18px; color: var(--success); display: flex; align-items: center; gap: 12px; font-weight: 800;">
+                    <i class="fa-solid fa-list-check" style="font-size: 24px;"></i> PANEL DE FILTRADO HISTÓRICO (ENTRADAS)
+                </h3>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-sm btn-success" id="btnApplyEntryFilters"><i class="fa-solid fa-check"></i> Aplicar Filtros</button>
+                    <button class="btn btn-sm btn-secondary" id="btnResetEntryFilters"><i class="fa-solid fa-rotate"></i> Limpiar</button>
+                    <button class="btn btn-sm btn-danger" id="btnCloseEntryFilters"><i class="fa-solid fa-times"></i> Cerrar</button>
+                </div>
+            </div>
+            
+            <!-- Selector de Meses -->
+            <div class="filter-group-title" style="font-size: 12px; font-weight: 800; color: var(--gray); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">1. Seleccionar Meses de Registro</div>
+            <div class="month-selector" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; background: rgba(255,255,255,0.6); padding: 15px; border-radius: 12px; margin-bottom: 25px; border: 1px solid rgba(0,0,0,0.05);">
+                <label style="display: flex; align-items: center; gap: 8px; font-weight: bold; cursor: pointer; color: var(--primary);">
+                    <input type="checkbox" id="checkEntryAllMonths" checked> TODO
+                </label>
+                <label class="month-check"><input type="checkbox" value="0" class="entry-month-input" checked> Enero</label>
+                <label class="month-check"><input type="checkbox" value="1" class="entry-month-input" checked> Febrero</label>
+                <label class="month-check"><input type="checkbox" value="2" class="entry-month-input" checked> Marzo</label>
+                <label class="month-check"><input type="checkbox" value="3" class="entry-month-input" checked> Abril</label>
+                <label class="month-check"><input type="checkbox" value="4" class="entry-month-input" checked> Mayo</label>
+                <label class="month-check"><input type="checkbox" value="5" class="entry-month-input" checked> Junio</label>
+                <label class="month-check"><input type="checkbox" value="6" class="entry-month-input" checked> Julio</label>
+                <label class="month-check"><input type="checkbox" value="7" class="entry-month-input" checked> Agosto</label>
+                <label class="month-check"><input type="checkbox" value="8" class="entry-month-input" checked> Septiembre</label>
+                <label class="month-check"><input type="checkbox" value="9" class="entry-month-input" checked> Octubre</label>
+                <label class="month-check"><input type="checkbox" value="10" class="entry-month-input" checked> Noviembre</label>
+                <label class="month-check"><input type="checkbox" value="11" class="entry-month-input" checked> Diciembre</label>
+            </div>
+            
+            <!-- Barras de Selección Avanzada -->
+            <div class="filter-group-title" style="font-size: 12px; font-weight: 800; color: var(--gray); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">2. Filtrar por Atributos del Producto</div>
+            <div class="advanced-filters" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px;">
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Producto</label>
+                    <select id="filterProducto" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Equipo</label>
+                    <select id="filterEquipo" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Equipación</label>
+                    <select id="filterEquipacion" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Año</label>
+                    <select id="filterAnio" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Talla</label>
+                    <select id="filterTalla" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Dorsal</label>
+                    <select id="filterDorsal" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Parches</label>
+                    <select id="filterParches" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+                <div class="form-group">
+                    <label style="font-size: 11px; font-weight: 700; color: #666;">Tipo</label>
+                    <select id="filterTipo" class="entry-filter-select"><option value="">TODOS</option></select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal de Búsqueda Histórica por Meses -->
+        <div id="historicalSearchModal" class="modal hidden">
+            <div class="modal-content" style="max-width: 90%; width: 1200px; height: 85vh; display: flex; flex-direction: column;">
+                <div class="modal-header">
+                    <h2 id="historicalModalTitle">Historial de Operaciones</h2>
+                    <span class="close-btn" id="btnCloseHistorical">&times;</span>
+                </div>
+                <div style="padding: 20px; overflow-y: auto; flex: 1;">
+                    <div class="month-selector" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; background: #f8f9fa; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #eee;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: bold; cursor: pointer; color: var(--primary);">
+                            <input type="checkbox" id="checkAllMonths" checked> TODO
+                        </label>
+                        <label class="month-check"><input type="checkbox" value="0" class="month-input" checked> Enero</label>
+                        <label class="month-check"><input type="checkbox" value="1" class="month-input" checked> Febrero</label>
+                        <label class="month-check"><input type="checkbox" value="2" class="month-input" checked> Marzo</label>
+                        <label class="month-check"><input type="checkbox" value="3" class="month-input" checked> Abril</label>
+                        <label class="month-check"><input type="checkbox" value="4" class="month-input" checked> Mayo</label>
+                        <label class="month-check"><input type="checkbox" value="5" class="month-input" checked> Junio</label>
+                        <label class="month-check"><input type="checkbox" value="6" class="month-input" checked> Julio</label>
+                        <label class="month-check"><input type="checkbox" value="7" class="month-input" checked> Agosto</label>
+                        <label class="month-check"><input type="checkbox" value="8" class="month-input" checked> Septiembre</label>
+                        <label class="month-check"><input type="checkbox" value="9" class="month-input" checked> Octubre</label>
+                        <label class="month-check"><input type="checkbox" value="10" class="month-input" checked> Noviembre</label>
+                        <label class="month-check"><input type="checkbox" value="11" class="month-input" checked> Diciembre</label>
+                    </div>
+
+                    <div id="historicalResults" class="table-container" style="background: white; min-height: 400px; box-shadow: none; border: 1px solid #eee;">
+                        <!-- Aquí se renderizará la tabla de resultados -->
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f1f3f5; text-align: left;">
+                                    <th style="padding: 12px; text-align: center;">Venta #</th>
+                                    <th style="padding: 12px;">Fecha</th>
+                                    <th style="padding: 12px;">Producto</th>
+                                    <th style="padding: 12px;">Detalle</th>
+                                    <th style="padding: 12px; text-align: center;">Operación</th>
+                                    <th style="padding: 12px; text-align: center;">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historicalTableBody">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content: Data Table -->
+        <main class="table-container">
+            <table id="inventoryTable">
+                <thead>
+                    <tr>
+                        <th>Detalle</th>
+                        <th>Código</th>
+                        <th>Producto</th>
+                        <th>Equipo</th>
+                        <th>Equipación</th>
+                        <th>Año</th>
+                        <th>Talla</th>
+                        <th>Dorsal</th>
+                        <th>Parche</th>
+                        <th>Tipo</th>
+                        <th>Descripción</th>
+                        <th>Cantidad</th>
+                        <th>Almacén</th>
+                        <th>Costo</th>
+                        <th>Proveedor</th>
+                        <th>Precio C.</th>
+                        <th>Fecha Reg.</th>
+                        <th>Copy</th>
+                        <th>Editar</th>
+                        <th>Duplicar</th>
+                    </tr>
+                </thead>
+                <tbody id="inventoryBody">
+                    <!-- Rows will be injected here by JS -->
+                </tbody>
+            </table>
+        </main>
+    </div>
+
+    <!-- Product Registration Modal -->
+    <div id="productModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect">
+            <div class="modal-header">
+                <h2 id="modalTitle">Registro de Producto</h2>
+                <button class="close-btn" id="btnCloseModal"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <form id="productForm">
+                <div class="form-grid">
+                    <!-- Code -->
+                    <div class="form-group">
+                        <label for="codigo">Código</label>
+                        <input type="text" id="codigo" placeholder="Código del producto">
+                    </div>
+                    <!-- Photo -->
+                    <div class="form-group photo-upload">
+                        <label>Fotos (Máx 4)</label>
+                        <div class="photo-inputs-container" id="photoInputsContainer">
+                            <!-- Photo slots -->
+                            <label class="photo-slot" data-index="0">
+                                <span class="btn-remove-photo hidden" title="Eliminar foto" onclick="removePhoto(event, 0)">✕</span>
+                                <i class="fa-solid fa-plus"></i> Imagen 1
+                                <input type="file" accept="image/*" class="photo-input" data-index="0" hidden>
+                                <img src="" alt="" class="image-preview hidden">
+                            </label>
+                            <label class="photo-slot" data-index="1">
+                                <span class="btn-remove-photo hidden" title="Eliminar foto" onclick="removePhoto(event, 1)">✕</span>
+                                <i class="fa-solid fa-plus"></i> Imagen 2
+                                <input type="file" accept="image/*" class="photo-input" data-index="1" hidden>
+                                <img src="" alt="" class="image-preview hidden">
+                            </label>
+                            <label class="photo-slot" data-index="2">
+                                <span class="btn-remove-photo hidden" title="Eliminar foto" onclick="removePhoto(event, 2)">✕</span>
+                                <i class="fa-solid fa-plus"></i> Imagen 3
+                                <input type="file" accept="image/*" class="photo-input" data-index="2" hidden>
+                                <img src="" alt="" class="image-preview hidden">
+                            </label>
+                            <label class="photo-slot" data-index="3">
+                                <span class="btn-remove-photo hidden" title="Eliminar foto" onclick="removePhoto(event, 3)">✕</span>
+                                <i class="fa-solid fa-plus"></i> Imagen 4
+                                <input type="file" accept="image/*" class="photo-input" data-index="3" hidden>
+                                <img src="" alt="" class="image-preview hidden">
+                            </label>
+                        </div>
+                    </div>
+                    <!-- Producto -->
+                    <div class="form-group">
+                        <label for="producto">Producto</label>
+                        <select id="producto" required>
+                            <option value="">Seleccione...</option>
+                            <option value="camiseta de fútbol">Camiseta de fútbol</option>
+                            <option value="camiseta de béisbol">Camiseta de béisbol</option>
+                            <option value="camiseta NBA">Camiseta NBA</option>
+                            <option value="polos">Polos</option>
+                            <option value="gorra">Gorra</option>
+                            <option value="Body baby">Body baby</option>
+                        </select>
+                    </div>
+                    <!-- Equipo -->
+                    <div class="form-group">
+                        <label for="equipo">Equipo</label>
+                        <input type="text" id="equipo" required placeholder="Nombre del equipo">
+                    </div>
+                    <!-- Equipación -->
+                    <div class="form-group">
+                        <label for="equipacion">Equipación</label>
+                        <select id="equipacion" required>
+                            <option value="">Seleccione...</option>
+                            <option value="Local">Primera equipacion Local</option>
+                            <option value="Visitante">Segunda Equipacion Visitante</option>
+                            <option value="Alterna">Tercera equipacion alterna</option>
+                            <option value="4 equipación">4 equipación</option>
+                            <option value="Edición Especial">Edición Especial</option>
+                            <option value="Retro">Retro</option>
+                            <option value="Conceptual">Conceptual</option>
+                            <option value="No aplica">No aplica</option>
+                        </select>
+                    </div>
+                    <!-- Año -->
+                    <div class="form-group">
+                        <label for="anio">Año</label>
+                        <input type="text" id="anio" placeholder="Ej. 2024 o 24/25">
+                    </div>
+                    <!-- Talla -->
+                    <div class="form-group">
+                        <label for="talla">Talla</label>
+                        <select id="talla" required>
+                            <option value="">Seleccione...</option>
+                            <optgroup label="Niño">
+                                <option value="6">6</option>
+                                <option value="8">8</option>
+                                <option value="10">10</option>
+                                <option value="12">12</option>
+                                <option value="14">14</option>
+                                <option value="16">16</option>
+                            </optgroup>
+                            <optgroup label="Adulto">
+                                <option value="S">S</option>
+                                <option value="M">M</option>
+                                <option value="L">L</option>
+                                <option value="XL">XL</option>
+                                <option value="XXL">XXL</option>
+                            </optgroup>
+                            <optgroup label="GORRA">
+                                <option value="Ajustable">Ajustable</option>
+                                <option value="Cerrada">Cerrada</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <!-- Dorsal -->
+                    <div class="form-group dorsal-group">
+                        <label for="dorsal">Dorsal</label>
+                        <div class="dorsal-container">
+                            <select id="dorsal">
+                                <option value="nombre y Número">Nombre y Número</option>
+                                <option value="Sin dorsal">Sin dorsal</option>
+                                <option value="no aplica">No aplica</option>
+                            </select>
+                            <input type="text" id="dorsal_texto" placeholder="Nombre y # Número" class="hidden">
+                        </div>
+                    </div>
+                    <!-- Parches -->
+                    <div class="form-group">
+                        <label for="parches">Parches</label>
+                        <input type="text" id="parches" placeholder="Ej. Champions League, etc.">
+                    </div>
+                    <!-- Tipo -->
+                    <div class="form-group">
+                        <label for="tipo">Tipo</label>
+                        <select id="tipo" required>
+                            <option value="">Seleccione...</option>
+                            <option value="manga larga">Manga larga</option>
+                            <option value="Manga corta">Manga corta</option>
+                            <option value="gorra plana">Gorra plana</option>
+                            <option value="Gorra Curva">Gorra Curva</option>
+                            <option value="Fan Versión">Fan Versión</option>
+                            <option value="Playera versión">Playera versión</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                    <!-- Descripción -->
+                    <div class="form-group full-width">
+                        <label for="descripcion">Descripción</label>
+                        <textarea id="descripcion" rows="2" placeholder="Descripción adicional del producto..."></textarea>
+                    </div>
+                    <!-- Costo -->
+                    <div class="form-group">
+                        <label for="costo">Costo del Producto</label>
+                        <input type="text" id="costo" placeholder="Ej. $15.00">
+                    </div>
+                    <!-- Proveedor -->
+                    <div class="form-group">
+                        <label for="proveedor">Datos del Proveedor</label>
+                        <input type="text" id="proveedor" placeholder="Nombre y Teléfono">
+                    </div>
+                    <!-- Note -->
+                    <div class="form-group">
+                        <label for="nota">Nota</label>
+                        <textarea id="nota" rows="2" placeholder="Notas internas..."></textarea>
+                    </div>
+                </div>
+                <!-- ID oculta para edición -->
+                <input type="hidden" id="editRowId" value="">
+                
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="btnCancel">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnSave"><i class="fa-solid fa-save"></i> Guardar Producto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Image Modal for zoom viewing -->
+    <div id="imageViewerModal" class="modal-overlay hidden" style="z-index: 2000;">
+        <div class="modal-content" style="background:transparent; box-shadow:none; display:flex; flex-direction:column; align-items:center;">
+             <button class="close-btn" id="btnCloseImageViewer" style="color:white; align-self:flex-end; margin-bottom:10px; font-size:30px;"><i class="fa-solid fa-times"></i></button>
+             <div id="imageViewerGrid" style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center;">
+                 <!-- images will show here -->
+             </div>
+        </div>
+    </div>
+
+    <!-- Detalles Modal -->
+    <div id="detallesModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 650px;">
+            <div class="modal-header">
+                <h2>Ficha del Producto</h2>
+                <button class="close-btn" id="btnCloseDetalles"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="detalles-body">
+                <div id="detallesContent" class="detalles-list">
+                    <!-- Populated via JS -->
+                </div>
+                <div id="detallesPhotos" class="detalles-photos-grid">
+                    <!-- Photos Populated via JS -->
+                </div>
+            </div>
+            <div class="modal-footer" style="padding: 20px; border-top: 1px solid #eee; display: flex; justify-content: space-between;">
+                <button class="btn btn-danger" id="btnDeleteDetail"><i class="fa-solid fa-trash"></i> Eliminar</button>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-secondary" id="btnCancelDetail">Cerrar</button>
+                    <button class="btn btn-primary" id="btnEditDetail"><i class="fa-solid fa-pencil"></i> Editar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entradas Modal -->
+    <div id="entradasModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Registro de Entrada</h2>
+                <button class="close-btn" id="btnCloseEntradas"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <form id="entradasForm" style="padding: 25px;">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="entradaCodigo">Código del Producto</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="entradaCodigo" required placeholder="Ej. YOLO-A1B2C3" style="flex:1;">
+                        <button type="button" class="btn btn-secondary" id="btnBuscarEntrada"><i class="fa-solid fa-search"></i> Buscar</button>
+                    </div>
+                    <small id="entradaProductoInfo" style="color:var(--primary); font-weight:bold; margin-top:5px; display:block;"></small>
+                    <div id="entradaImagePreview" class="modal-product-preview hidden" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="entradaCantidad">Cantidad entrante</label>
+                    <input type="number" id="entradaCantidad" min="1" required placeholder="Ej. 10">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="entradaAlmacen">Almacén / Ubicación</label>
+                    <input type="text" id="entradaAlmacen" required placeholder="Ej. Vitrina 1">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="entradaPrecio">Precio al Cliente</label>
+                    <input type="text" id="entradaPrecio" required placeholder="Ej. $50.00">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success" id="btnSaveEntrada" disabled><i class="fa-solid fa-check"></i> Registrar Entrada</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Editar Entrada Modal -->
+    <div id="editarEntradaModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-pen-to-square"></i> Editar Entrada (Corrección)</h2>
+                <button class="close-btn" id="btnCloseEditEntry"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <form id="editEntryForm" style="padding: 25px;">
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="editEntryCodigo">Código del Producto (Cero Error)</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="editEntryCodigo" required placeholder="Ej. YOLO-A1B2C3" style="flex:1;">
+                        <button type="button" class="btn btn-secondary" id="btnBuscarEditEntry"><i class="fa-solid fa-search"></i> Buscar</button>
+                    </div>
+                    <small id="editEntryInfo" style="color:var(--primary); font-weight:bold; margin-top:5px; display:block;"></small>
+                    <div id="editEntryImagePreview" class="modal-product-preview hidden" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    </div>
+                </div>
+                <!-- Campos a Editar -->
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="editEntryCantidad">Corregir Cantidad Total (Stock)</label>
+                    <input type="number" id="editEntryCantidad" min="0" required placeholder="Ajustar stock final...">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="editEntryAlmacen">Almacén / Ubicación</label>
+                    <input type="text" id="editEntryAlmacen" required placeholder="Ej. Vitrina 1">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="editEntryPrecio">Precio Sugerido al Cliente</label>
+                    <input type="text" id="editEntryPrecio" required placeholder="Ej. $50.00">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-warning" id="btnSaveEditEntry" disabled style="color: #856404;"><i class="fa-solid fa-check"></i> Aplicar Corrección</button>
+                </div>
+                <p style="font-size:11px; color:#999; margin-top:15px; text-align:center;">* Use este botón únicamente para corregir errores de entrada inicial o stock equivocado.</p>
+            </form>
+        </div>
+    </div>
+
+    <div id="salidasModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Registro de Salida (Venta)</h2>
+                <button class="close-btn" id="btnCloseSalidas"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <form id="salidasForm" style="padding: 25px;">
+                <!-- Buscador para agregar a la lista -->
+                <div class="form-group" style="margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 12px; border: 1px solid #ddd;">
+                    <label for="salidaCodigo">Agregar Producto a la Venta</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="salidaCodigo" placeholder="Tipea o escanea el código (Ej. YOLO-A1)" style="flex:1;">
+                        <button type="button" class="btn btn-secondary" id="btnBuscarSalida" title="Añadir a la lista (mantiene la ventana abierta)"><i class="fa-solid fa-plus"></i> Añadir</button>
+                        <button type="button" class="btn btn-info" id="btnBuscarYMinimizar" title="Añadir a la lista y ocultar la ventana para copiar otro código"><i class="fa-solid fa-magnifying-glass-plus"></i> Añadir y copiar otro</button>
+                    </div>
+                    <small id="salidaProductoInfo" style="margin-top:8px; display:block;"></small>
+                </div>
+                
+                <!-- Contenedor dinámica de la lista de productos a vender -->
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>Productos Seleccionados</span>
+                        <span id="salidaTotalItems" style="background:var(--danger); color:white; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:bold;">0 items</span>
+                    </label>
+                    <div id="salidaItemsList" style="min-height: 80px; max-height: 220px; overflow-y: auto; border: 2px dashed #eee; padding: 10px; border-radius: 8px; background: white; display: flex; flex-direction: column; gap: 10px;">
+                        <p style="text-align:center; color:#999; margin: 20px 0; font-size:12px; font-weight:600;" id="salidaVacioMsg">Ningún producto agregado a la lista.</p>
+                    </div>
+                </div>
+
+                <!-- Panel Financiero -->
+                <div id="salidaFinancePanel" style="display:none; margin-bottom:20px; background: linear-gradient(135deg, #f5f7fa, #eef2f7); border-radius:14px; border: 1px solid #d1dbe8; overflow:hidden;">
+                    
+                    <!-- Subtotal -->
+                    <div style="padding: 14px 18px; border-bottom: 1px solid #d1dbe8; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:13px; color:#555; font-weight:600;">Subtotal</span>
+                        <span id="salidaSubtotal" style="font-size:18px; font-weight:800; color: #222;">$0.00</span>
+                    </div>
+
+                    <!-- Descuento -->
+                    <div style="padding: 14px 18px; border-bottom: 1px solid #d1dbe8;">
+                        <div style="font-size:12px; font-weight:700; color:#7f8c8d; text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px;">Descuento</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <!-- Opción % -->
+                            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:12px; font-weight:600;">
+                                <input type="radio" name="tipoDescuento" value="porcentaje" id="descPorcentaje" checked style="accent-color: var(--primary);">
+                                <span>Porcentaje</span>
+                            </label>
+                            <!-- Opción $ -->
+                            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:12px; font-weight:600;">
+                                <input type="radio" name="tipoDescuento" value="monto" id="descMonto" style="accent-color: var(--primary);">
+                                <span>Monto ($)</span>
+                            </label>
+                            <!-- Opción Regalo -->
+                            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:12px; font-weight:600;">
+                                <input type="radio" name="tipoDescuento" value="regalo" id="descRegalo" style="accent-color: var(--primary);">
+                                <span>🎁 Regalo (gratis)</span>
+                            </label>
+                        </div>
+                        <!-- Input de descuento -->
+                        <div id="descInputContainer" style="margin-top:10px; display:flex; align-items:center; gap:0;">
+                            <span id="descSymbol" style="background:#dee2e6; border:1px solid #ced4da; border-right:none; padding:7px 10px; border-radius:6px 0 0 6px; font-weight:700; font-size:13px; color:#495057;">%</span>
+                            <input type="number" id="salidaDescuentoVal" min="0" placeholder="0" style="flex:1; border-radius:0 6px 6px 0; border: 1px solid #ced4da; padding:7px 10px; font-size:13px;" oninput="calcSalidaTotals()">
+                        </div>
+                    </div>
+
+                    <!-- Abono -->
+                    <div style="padding: 14px 18px; border-bottom: 1px solid #d1dbe8;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-size:12px; font-weight:700; color:#7f8c8d; text-transform:uppercase; letter-spacing:.5px;">Abono</span>
+                            <span id="salidaTotalConDesc" style="font-size:14px; font-weight:800; color:var(--danger);">Total: $0.00</span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:0;">
+                            <span style="background:#dee2e6; border:1px solid #ced4da; border-right:none; padding:7px 10px; border-radius:6px 0 0 6px; font-weight:700; font-size:13px; color:#495057;">$</span>
+                            <input type="number" id="salidaAbono" min="0" placeholder="Monto abonado" style="flex:1; border-radius:0 6px 6px 0; border: 1px solid #ced4da; padding:7px 10px; font-size:13px;" oninput="calcSalidaTotals()">
+                        </div>
+                    </div>
+
+                    <!-- Diferencia (saldo) -->
+                    <div style="padding:14px 18px; border-bottom: 1px solid #d1dbe8; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:13px; color:#555; font-weight:600;">Diferencia / Saldo</span>
+                        <span id="salidaDiferencia" style="font-size:20px; font-weight:900; color: var(--success);">$0.00</span>
+                    </div>
+
+                    <!-- Pago Completo Switch -->
+                    <div style="padding: 14px 18px; display:flex; justify-content:space-between; align-items:center;">
+                        <label for="pagoCompletoSwitch" style="font-size:13px; font-weight:700; color:#333; cursor:pointer; display:flex; align-items:center; gap:8px;">
+                            <i class="fa-solid fa-circle-check" style="color: var(--success);"></i>
+                            Pago Completo
+                        </label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pagoCompletoSwitch" onchange="calcSalidaTotals()">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Datos del Cliente (Aplica a todos) -->
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="salidaNombre">Nombre del Cliente</label>
+                    <input type="text" id="salidaNombre" placeholder="Nombre completo (Opcional)">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="salidaTelefono">Teléfono</label>
+                    <input type="text" id="salidaTelefono" placeholder="Ej. +1 234 567 890 (Opcional)">
+                </div>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label for="salidaDireccion">Dirección (Opcional)</label>
+                    <input type="text" id="salidaDireccion" placeholder="Dirección de envío o entrega">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-danger" id="btnSaveSalida" disabled><i class="fa-solid fa-right-from-bracket"></i> Registrar Salida</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 1200px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-clock-rotate-left"></i> Historial de Actividad</h2>
+                <button class="close-btn" id="btnCloseHistory">&times;</button>
+            </div>
+            <div class="detalles-body">
+                <div id="historyContainer" class="history-list">
+                    <!-- History logs here -->
+                </div>
+            </div>
+            <div class="modal-actions" style="padding: 15px 25px; display: flex; justify-content: space-between;">
+                <button class="btn btn-secondary" id="btnConfigHistory"><i class="fa-solid fa-gear"></i> Configuración</button>
+                <button class="btn btn-secondary" id="btnCloseHistory2">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Configuración -->
+    <div id="configModal" class="modal-overlay hidden" style="z-index: 2500;">
+        <div class="modal-content glass-effect" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-gear"></i> Centro de Control</h2>
+                <button class="close-btn" id="btnCloseConfig">&times;</button>
+            </div>
+            <div class="detalles-body" style="padding: 30px; display: flex; flex-direction: column; gap: 15px;">
+                <p style="font-size: 13px; text-align: center; color: var(--gray); margin-bottom: 10px;">Administración de respaldo y seguridad de datos.</p>
+                
+                <button class="btn btn-primary" id="btnExportJSON" onclick="exportFullBackup()" style="width: 100%; justify-content: center; padding: 12px; font-weight: 700; margin-bottom: 10px; background: var(--secondary);">
+                    <i class="fa-solid fa-file-code"></i> Generar Respaldo Total (JSON)
+                </button>
+                
+                <button class="btn btn-success" id="btnExportCSV" style="width: 100%; justify-content: center; padding: 12px; font-weight: 700;">
+                    <i class="fa-solid fa-file-csv"></i> Descargar para Google Sheets
+                </button>
+                
+                <button class="btn btn-danger" id="btnClearHistoryFull" style="width: 100%; justify-content: center; padding: 12px; font-weight: 700; opacity: 0.8;">
+                    <i class="fa-solid fa-trash-can"></i> Vaciar Historial Permanentemente
+                </button>
+            </div>
+            <div class="modal-footer" style="padding: 15px 30px; border-top: 1px solid #eee;">
+                <button class="btn btn-secondary" id="btnCloseConfig2" style="width: 100%; justify-content: center;">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    
+    <div id="reportModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-file-invoice"></i> Reporte de Inventario Completo</h2>
+                <button class="close-btn" id="btnCloseReport">&times;</button>
+            </div>
+            <div class="detalles-body report-body">
+                <div class="report-summary-grid">
+                    <div class="report-card primary-card">
+                        <span class="report-label">Total Gral. Salidas</span>
+                        <span class="report-main-value" id="report-total-salida">0</span>
+                    </div>
+                    <div class="report-card success-card">
+                        <span class="report-label">Total Gral. Entradas</span>
+                        <span class="report-main-value" id="report-total-entrada">0</span>
+                    </div>
+                </div>
+                
+                <div class="report-details-container">
+                    <div class="report-section">
+                        <h3><i class="fa-solid fa-users"></i> Cantidad Total por Equipo</h3>
+                        <div class="report-table-wrapper">
+                            <table class="report-mini-table">
+                                <thead>
+                                    <tr>
+                                        <th>Equipo</th>
+                                        <th>Cantidad Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-teams-body">
+                                    <!-- Populated via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div class="report-section">
+                        <h3><i class="fa-solid fa-ruler-combined"></i> Cantidad Total por Talla</h3>
+                        <div class="report-table-wrapper">
+                            <table class="report-mini-table">
+                                <thead>
+                                    <tr>
+                                        <th>Talla</th>
+                                        <th>Cantidad Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="report-sizes-body">
+                                    <!-- Populated via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-actions" style="padding: 15px 25px; display: flex; justify-content: flex-end;">
+                <button class="btn btn-secondary" id="btnCloseReport2">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal para Borrar Fila -->
+    <div id="deleteModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 650px;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-trash-can"></i> ¿Qué Fila Deseas Borrar?</h2>
+                <button class="close-btn" id="btnCloseDeleteMain">&times;</button>
+            </div>
+            <div class="detalles-body" style="padding: 25px;">
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="deleteCodigoInput">Pega el código de la fila aquí:</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="deleteCodigoInput" placeholder="Ej. YOLO-X1Y2Z3" style="flex:1;">
+                        <button type="button" class="btn btn-secondary" id="btnSearchDelete"><i class="fa-solid fa-search"></i> Buscar</button>
+                    </div>
+                </div>
+                
+                <div id="deletePreviewArea" class="hidden">
+                    <div style="background: #fdf2f2; border: 1px solid #feb2b2; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                        <p style="color:var(--danger); font-weight:700; font-size:14px; margin-bottom:10px;">SE ELIMINARÁ EL SIGUIENTE PRODUCTO:</p>
+                        <div id="deletePreviewContent" class="detalles-list">
+                            <!-- Populated via JS -->
+                        </div>
+                        <div id="deletePreviewPhotos" class="detalles-photos-grid">
+                            <!-- Photos -->
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <p style="font-weight: 700; color:var(--dark); margin-bottom: 15px;">¿ESTÁ SEGURO QUE DESEA BORRAR ESTA FILA?</p>
+                        <div style="display: flex; gap:15px; justify-content: center;">
+                            <button class="btn btn-danger" id="btnConfirmDelete">Aceptar</button>
+                            <button class="btn btn-secondary" id="btnCancelDeleteModal">Cancelar</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <p id="deleteNotFound" class="hidden" style="color:var(--danger); text-align:center; padding:10px; font-weight:600;">Código no encontrado. Por favor verifique.</p>
+            </div>
+        </div>
+    </div>
+    <!-- Banco de Clientes Modal -->
+    <div id="clientsModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 900px; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-users"></i> Banco de Clientes</h2>
+                <button class="close-btn" id="btnCloseClients"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div style="padding: 20px; overflow-y: auto; flex: 1; background: #f8f9fa;">
+                <div class="search-container" style="flex:none; margin-bottom: 15px; max-width:100%;">
+                    <i class="fa-solid fa-search search-icon"></i>
+                    <input type="text" id="clientsSearchInput" placeholder="Buscar cliente por nombre o teléfono...">
+                </div>
+                <div class="table-container" style="background: white; min-height: 300px; box-shadow: none; border: 1px solid #eee;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f1f3f5; text-align: left;">
+                                <th style="padding: 12px; width: 20%">Nombre</th>
+                                <th style="padding: 12px; width: 15%">Teléfono</th>
+                                <th style="padding: 12px; width: 25%">Dirección</th>
+                                <th style="padding: 12px; width: 25%">Últimas Compras</th>
+                                <th style="padding: 12px; width: 15%">Última Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody id="clientsTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Post-Sale Modal (Acciones posteriores a la venta) -->
+    <div id="postSaleModal" class="modal-overlay hidden">
+        <div class="modal-content glass-effect" style="max-width: 600px; text-align: center;">
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-clipboard-check" style="color:var(--success);"></i> ¡Venta Completada!</h2>
+                <button class="close-btn" id="btnClosePostSale"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div style="padding: 30px;">
+                <p style="font-size: 16px; color: var(--dark); font-weight: 500; margin-bottom: 25px;">Selecciona un documento para generar o imprimir:</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 15px; justify-content: center;">
+                    <button class="btn btn-primary" id="btnGenPicking" style="flex: 1; min-width: 150px; padding: 15px; flex-direction: column; gap: 10px;">
+                        <i class="fa-solid fa-boxes-packing" style="font-size: 24px;"></i>
+                        <span style="font-weight: 700;">Picking Interno</span>
+                        <span style="font-size: 10px; font-weight: normal; opacity: 0.8;">Fotos, ubicaciones de almacén</span>
+                    </button>
+                    <button class="btn btn-warning" id="btnGenPacking" style="flex: 1; min-width: 150px; padding: 15px; flex-direction: column; gap: 10px; color: #856404;">
+                        <i class="fa-solid fa-box" style="font-size: 24px;"></i>
+                        <span style="font-weight: 700;">Packing (Courier)</span>
+                        <span style="font-size: 10px; font-weight: normal; opacity: 0.8;">Sticker con datos de envío y cliente</span>
+                    </button>
+                    <button class="btn btn-success" id="btnGenReceipt" style="flex: 1; min-width: 150px; padding: 15px; flex-direction: column; gap: 10px;">
+                        <i class="fa-solid fa-receipt" style="font-size: 24px;"></i>
+                        <span style="font-weight: 700;">Recibo (Ticket)</span>
+                        <span style="font-size: 10px; font-weight: normal; opacity: 0.8;">Comprobante de venta con totales</span>
+                    </button>
+                </div>
+                <!-- Packing Extra Info Container -->
+                <div id="packingExtraInfo" class="hidden" style="margin-top: 20px; background: #fff8e1; border: 1px dashed #ffe082; padding: 15px; border-radius: 8px; text-align: left;">
+                    <h4 style="margin-bottom: 10px; color: #ffb300; font-size: 13px;">Opciones de Envío (Packing)</h4>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="packIdField" style="font-size:11px;">Identificación del Cliente (Opcional)</label>
+                        <input type="text" id="packIdField" placeholder="Ej. CI / RIF / DNI...">
+                    </div>
+                    <div class="form-group">
+                        <label for="packWeightField" style="font-size:11px;">Peso Aproximado (Opcional)</label>
+                        <input type="text" id="packWeightField" placeholder="Ej. 1.5 kg">
+                    </div>
+                    <button class="btn btn-warning" id="btnConfirmPacking" style="width: 100%; justify-content: center; margin-top: 10px; padding: 10px;">Imprimir Etiqueta Courier</button>
+                </div>
+                <button class="btn btn-secondary" id="btnFinishSale" style="margin-top: 30px; width: 100%; justify-content: center;">Finalizar y Volver al Inventario</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print Container (Only visible during print) -->
+    <div id="printContainer" class="print-only"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
