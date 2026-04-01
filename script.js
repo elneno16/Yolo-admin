@@ -5,29 +5,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     let inventory = JSON.parse(localStorage.getItem('yolo_inventory')) || [];
 
-    // Función para Cargar Datos desde la Nube
+    // Función para Cargar Datos desde la Nube (Prioridad Máxima)
     async function loadFromCloud() {
         try {
+            console.log("🔄 Sincronizando con la nube...");
             const response = await fetch(G_SHEET_API);
             const cloudData = await response.json();
             if (cloudData && cloudData.length > 0) {
-                // Si hay datos en la nube, estos mandan
                 inventory = cloudData;
                 localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
                 renderTable();
-                console.log("✅ Datos sincronizados desde Google Sheets");
+                console.log("✅ Sincronización completa: Google Sheets manda.");
+            } else {
+                checkInitialData();
             }
         } catch (e) {
             console.error("❌ Error al cargar desde la nube:", e);
+            checkInitialData();
         }
     }
 
-    // Intentar carga inicial desde la nube
-    loadFromCloud();
-
-    // Inject initial data if empty (Solo si no hay nada en local NI en la nube)
-    if (inventory.length === 0) {
-        const rawData = `DE NIÑO VENEZUELA Vinotinto 24/25 LOCAL - Talla 8  - SIN DORSAL  - COPA AMERICA 2024	sin dorsal 	1era equipacion local 	8
+    function checkInitialData() {
+        if (!inventory || inventory.length === 0) {
+            console.log("📦 Cargando datos iniciales (Data local)");
+            const rawData = `DE NIÑO VENEZUELA Vinotinto 24/25 LOCAL - Talla 8  - SIN DORSAL  - COPA AMERICA 2024	sin dorsal 	1era equipacion local 	8
 AL NASSR AMARILLA 24/25 LOCAL - Talla L- CRISTIANO RONALDO #7 - SIN PARCHE	Cristiano Ronaldo #7	1era equipacion local 	L
 AL NASSR AZUL MARINO 24/25 VISITANTE - Talla S - CRISTIANO RONALDO #7-	Cristiano Ronaldo #7	2da equipacion visitante 	S
 AL NASSR AZUL MARINO 24/25 VISITANTE - Talla XL - CRISTIANO RONALDO #7 -	Cristiano Ronaldo #7	2da equipacion visitante 	XL
@@ -67,70 +68,72 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla L- SOTELDO #10- SIN PARCHES	SOTELDO #10
 VENEZUELA Blanca 24/25 VISITANTE - Talla M - SOTELDO #10 - SIN PARCHES	SOTELDO #10	2da equipacion visitante 	M
 VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	2da equipacion visitante 	M`;
 
-        const startTime = '2026-03-25T15:32:05-05:00';
-        inventory = rawData.split('\n').filter(l => l.trim()).map((line, i) => {
-            const parts = line.split('\t');
-            const desc = parts[0] ? parts[0].trim() : "";
-            let dorsalValue = parts[1] ? parts[1].trim() : "nombre y Número";
-            const equipacion = parts[2] ? parts[2].trim() : "Local";
-            const talla = parts[3] ? parts[3].trim() : "";
-            
-            // Logic for Dorsal extraction
-            let dorsalType = "nombre y Número";
-            let dorsalText = "";
-            
-            if (dorsalValue.toLowerCase().includes("sin dorsal")) {
-                dorsalType = "Sin dorsal";
-                dorsalValue = "Sin dorsal";
-            } else if (dorsalValue.toLowerCase().includes("no aplica")) {
-                dorsalType = "no aplica";
-                dorsalValue = "no aplica";
-            } else {
-                dorsalType = "nombre y Número";
-                dorsalText = dorsalValue;
-            }
+            const startTime = '2026-03-25T15:32:05-05:00';
+            inventory = rawData.split('\n').filter(l => l.trim()).map((line, i) => {
+                const parts = line.split('\t');
+                const desc = parts[0] ? parts[0].trim() : "";
+                let dorsalValue = parts[1] ? parts[1].trim() : "nombre y Número";
+                const equipacion = parts[2] ? parts[2].trim() : "Local";
+                const talla = parts[3] ? parts[3].trim() : "";
+                
+                let dorsalType = "nombre y Número";
+                let dorsalText = "";
+                if (dorsalValue.toLowerCase().includes("sin dorsal")) {
+                    dorsalType = "Sin dorsal";
+                } else if (dorsalValue.toLowerCase().includes("no aplica")) {
+                    dorsalType = "no aplica";
+                } else {
+                    dorsalType = "nombre y Número";
+                    dorsalText = dorsalValue;
+                }
 
-            const tipo = parts[6] ? parts[6].trim() : "Manga corta";
-            const producto = parts[7] ? parts[7].trim() : "camiseta de fútbol";
-            const almacen = parts[8] ? parts[8].trim() : "Pendiente";
-            
-            let equipo = "Otro";
-            const teamNames = ["REAL MADRID", "BARCELONA", "INTER MIAMI", "ATLETICO MADRID", "MANCHESTER CITY", "MANCHESTER UNITED", "AL NASSR", "REAL SOCIEDAD", "VENEZUELA"];
-            for(let t of teamNames) { if(desc.toUpperCase().includes(t)) equipo = t; }
-            
-            let parches = "";
-            const desc_parts = desc.split('-');
-            desc_parts.forEach(d => {
-                const dup = d.toUpperCase();
-                if(dup.includes("CHAMPIONS") || dup.includes("LA LIGA") || dup.includes("MLS") || dup.includes("COPA AMERICA") || dup.includes("SIN PARCHE")) parches = d.trim();
+                const tipo = parts[6] ? parts[6].trim() : "Manga corta";
+                const producto = parts[7] ? parts[7].trim() : "camiseta de fútbol";
+                const almacen = parts[8] ? parts[8].trim() : "Pendiente";
+                
+                let equipo = "Otro";
+                const teamNames = ["REAL MADRID", "BARCELONA", "INTER MIAMI", "ATLETICO MADRID", "MANCHESTER CITY", "MANCHESTER UNITED", "AL NASSR", "REAL SOCIEDAD", "VENEZUELA"];
+                for(let t of teamNames) { if(desc.toUpperCase().includes(t)) equipo = t; }
+                
+                let parches = "";
+                const desc_parts = desc.split('-');
+                desc_parts.forEach(d => {
+                    const dup = d.toUpperCase();
+                    if(dup.includes("CHAMPIONS") || dup.includes("LA LIGA") || dup.includes("MLS") || dup.includes("COPA AMERICA") || dup.includes("SIN PARCHE")) parches = d.trim();
+                });
+                
+                return {
+                    id: (Date.now() + i).toString(),
+                    codigo: 'YOLO-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+                    photos: [],
+                    producto: producto,
+                    equipo: equipo,
+                    equipacion: equipacion,
+                    anio: "2024",
+                    talla: talla,
+                    dorsal: dorsalType,
+                    dorsalTexto: dorsalText,
+                    parches: parches,
+                    tipo: tipo,
+                    descripcion: desc,
+                    cantidad: "1",
+                    almacen: almacen,
+                    costo: "",
+                    proveedor: "",
+                    nota: "",
+                    fechaEntrada: startTime,
+                    fechaRegistro: startTime
+                };
             });
-            
-            return {
-                id: (Date.now() + i).toString(),
-                codigo: 'YOLO-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
-                photos: [],
-                producto: producto,
-                equipo: equipo,
-                equipacion: equipacion,
-                anio: "2024",
-                talla: talla,
-                dorsal: dorsalType,
-                dorsalTexto: dorsalText,
-                parches: parches,
-                tipo: tipo,
-                descripcion: desc,
-                cantidad: "1",
-                almacen: almacen,
-                costo: "",
-                proveedor: "",
-                nota: "",
-                fechaEntrada: startTime,
-                fechaRegistro: startTime
-            };
-        });
-        localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
-    } else {
-        // Special Migration: Update existing records to the new AM/PM start time if they were just initialized
+            saveInventory();
+        }
+    }
+
+    // Arrancar la sincronización
+    loadFromCloud();
+
+    // Special Migration: Update existing records to the new AM/PM start time if they were just initialized
+    if (inventory.length > 0) {
         let changed = false;
         const targetTime = '2026-03-25T15:32:05-05:00';
         inventory.forEach(item => {
