@@ -1,9 +1,32 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // State
-    let inventory = JSON.parse(localStorage.getItem('yolo_inventory'));
+    // API de Google Sheets para Sincronización
+    const G_SHEET_API = "https://script.google.com/macros/s/AKfycbzNKQnl-dbm3R6kBGXFdyhwqtaWLAjQPmCXys-OqZHwAMwtG7iHwCF6RFIK-YcKqezo/exec";
 
-    // Inject initial data if empty
-    if (!inventory || inventory.length === 0) {
+    // State
+    let inventory = JSON.parse(localStorage.getItem('yolo_inventory')) || [];
+
+    // Función para Cargar Datos desde la Nube
+    async function loadFromCloud() {
+        try {
+            const response = await fetch(G_SHEET_API);
+            const cloudData = await response.json();
+            if (cloudData && cloudData.length > 0) {
+                // Si hay datos en la nube, estos mandan
+                inventory = cloudData;
+                localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
+                renderTable();
+                console.log("✅ Datos sincronizados desde Google Sheets");
+            }
+        } catch (e) {
+            console.error("❌ Error al cargar desde la nube:", e);
+        }
+    }
+
+    // Intentar carga inicial desde la nube
+    loadFromCloud();
+
+    // Inject initial data if empty (Solo si no hay nada en local NI en la nube)
+    if (inventory.length === 0) {
         const rawData = `DE NIÑO VENEZUELA Vinotinto 24/25 LOCAL - Talla 8  - SIN DORSAL  - COPA AMERICA 2024	sin dorsal 	1era equipacion local 	8
 AL NASSR AMARILLA 24/25 LOCAL - Talla L- CRISTIANO RONALDO #7 - SIN PARCHE	Cristiano Ronaldo #7	1era equipacion local 	L
 AL NASSR AZUL MARINO 24/25 VISITANTE - Talla S - CRISTIANO RONALDO #7-	Cristiano Ronaldo #7	2da equipacion visitante 	S
@@ -260,16 +283,30 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()} ${hours}:${minutes} ${ampm}`;
     }
     
-    // Utility: Save to LocalStorage
-    function saveInventory() {
+    // Utility: Save to LocalStorage and Sync with Cloud
+    async function saveInventory() {
         try {
+            // 1. Guardar en LocalStorage (Respaldo inmediato)
             localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
             renderTable();
-            checkStorageQuota(); // Monitoring
+            checkStorageQuota();
+
+            // 2. Sincronizar con Google Sheets (Segundo plano)
+            fetch(G_SHEET_API, {
+                method: 'POST',
+                mode: 'no-cors', // Necesario para Google Apps Script
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(inventory)
+            }).then(() => {
+                console.log("☁️ Sincronización con la nube exitosa");
+            }).catch(err => {
+                console.error("⚠️ No se pudo sincronizar con la nube:", err);
+            });
+
         } catch (e) {
             if (e.name === 'QuotaExceededError') {
                 console.error("Critical: LocalStorage is full!");
-                showToast('⚠️ Error: Memoria llena. No se pudo guardar.', 'error');
+                showToast('⚠️ Error: Memoria llena. No se pudo guardar localmente.', 'error');
                 throw e; 
             }
         }
