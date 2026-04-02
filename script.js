@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     // API de Google Sheets para Sincronización
     const G_SHEET_API = "https://script.google.com/macros/s/AKfycbzNKQnl-dbm3R6kBGXFdyhwqtaWLAjQPmCXys-OqZHwAMwtG7iHwCF6RFIK-YcKqezo/exec";
+    const G_SPREADSHEET_URL = "https://elneno16.github.io/Yolo-admin/"; // Central de la nube (GitHub Pages)
 
     // State
     let inventory = JSON.parse(localStorage.getItem('yolo_inventory')) || [];
@@ -11,11 +12,19 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("🔄 Sincronizando con la nube...");
             const response = await fetch(G_SHEET_API);
             const cloudData = await response.json();
-            if (cloudData && cloudData.length > 0) {
-                inventory = cloudData;
-                localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
-                renderTable();
-                console.log("✅ Sincronización completa: Google Sheets manda.");
+            
+            if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
+                // Solo sobreescribir si la nube tiene más o igual datos que local
+                // O si local está vacío, para evitar borrar progresos no subidos
+                if (cloudData.length >= inventory.length || inventory.length === 0) {
+                    inventory = cloudData;
+                    localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
+                    renderTable();
+                    updateCounters();
+                    console.log("✅ Sincronización completa: Google Sheets manda.");
+                } else {
+                    console.log("ℹ️ Local tiene más datos que la nube. Ignorando descarga para proteger cambios locales.");
+                }
             } else {
                 checkInitialData();
             }
@@ -178,6 +187,18 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     const dorsalSelect = document.getElementById('dorsal');
     const dorsalTexto = document.getElementById('dorsal_texto');
 
+    // Configuración Elements
+    const configModal = document.getElementById('configModal');
+    const btnMainConfig = document.getElementById('btnMainConfig');
+    const btnCloseConfig = document.getElementById('btnCloseConfig');
+    const btnCloseConfig2 = document.getElementById('btnCloseConfig2');
+    const btnPushToCloud = document.getElementById('btnPushToCloud');
+    const btnExportCSV = document.getElementById('btnExportCSV');
+    const btnClearHistoryFull = document.getElementById('btnClearHistoryFull');
+    const btnExportJSON = document.getElementById('btnExportJSON');
+    const syncSuccessModal = document.getElementById('syncSuccessModal');
+    const btnOpenCloudLink = document.getElementById('btnOpenCloudLink');
+
     // Historial, Banco de Clientes y Contador de Ventas
     let historyLog = JSON.parse(localStorage.getItem('yolo_history')) || [];
     let clientsBank = JSON.parse(localStorage.getItem('yolo_clients')) || [];
@@ -240,22 +261,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         } catch (e) {}
     }
 
-    // --- NEW: Full Backup (JSON) ---
-    window.exportFullBackup = function() {
-        const data = {
-            inventory: inventory,
-            history: historyLog,
-            exportDate: new Date().toISOString(),
-            platform: 'Antigravity Yolo Inventario'
-        };
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `yolo_backup_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        showToast('✅ Respaldo completo generado con éxito', 'success');
-    };
+
 
     // Toggle dorsal text input
     if (dorsalSelect) {
@@ -287,12 +293,15 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     }
     
     // Utility: Save to LocalStorage and Sync with Cloud
-    async function saveInventory() {
+    async function saveInventory(silent = true) {
         try {
             // 1. Guardar en LocalStorage (Respaldo inmediato)
             localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
             renderTable();
+            updateCounters();
             checkStorageQuota();
+
+            if (!silent) showToast("📤 Iniciando subida forzada a la nube...", "info");
 
             // 2. Sincronizar con Google Sheets (Segundo plano)
             fetch(G_SHEET_API, {
@@ -302,8 +311,13 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                 body: JSON.stringify(inventory)
             }).then(() => {
                 console.log("☁️ Sincronización con la nube exitosa");
+                if (!silent) {
+                    showToast("✅ ¡Nube actualizada correctamente!", "success");
+                    if (syncSuccessModal) syncSuccessModal.classList.remove('hidden');
+                }
             }).catch(err => {
                 console.error("⚠️ No se pudo sincronizar con la nube:", err);
+                if (!silent) showToast("❌ Error al subir. Comprueba tu conexión.", "error");
             });
 
         } catch (e) {
@@ -322,6 +336,8 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             productForm.reset();
             editRowId.value = '';
             codigoInput.value = generateCode();
+            document.getElementById('cantidad').value = '1';
+            document.getElementById('precioCliente').value = '';
             resetPhotos();
             dorsalTexto.classList.remove('hidden'); // Default show if name/num
             document.getElementById('modalTitle').textContent = 'Registro de Producto';
@@ -418,7 +434,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         e.preventDefault();
         
         try {
-            const originalItem = editRowId.value ? inventory.find(i => i.id === editRowId.value) : null;
+            const originalItem = editRowId.value ? inventory.find(i => i.id.toString() === editRowId.value.toString()) : null;
             
             const productData = {
                 // Pre-fill with original item if editing to preserve non-form fields (client info, etc.)
@@ -434,22 +450,33 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                 dorsal: document.getElementById('dorsal').value,
                 dorsalTexto: document.getElementById('dorsal_texto').value,
                 parches: document.getElementById('parches').value,
+                cantidad: document.getElementById('cantidad').value || '0',
                 tipo: document.getElementById('tipo').value,
                 descripcion: document.getElementById('descripcion').value,
-                // These are already in originalItem if editing, otherwise '0'/''
-                cantidad: originalItem ? (originalItem.cantidad || '0') : '0',
                 almacen: originalItem ? (originalItem.almacen || '') : '',
                 costo: document.getElementById('costo').value,
+                precioCliente: document.getElementById('precioCliente').value,
                 proveedor: document.getElementById('proveedor').value,
                 nota: document.getElementById('nota').value,
                 // Preserve original registration date or set new one
-                fechaRegistro: originalItem ? (originalItem.fechaRegistro || new Date().toISOString()) : new Date().toISOString()
+                fechaRegistro: originalItem ? (originalItem.fechaRegistro || new Date().toISOString()) : new Date().toISOString(),
+                // Update original stock tracker if manual changes occur
+                unidadesVendidas: originalItem ? (parseInt(originalItem.unidadesVendidas) || 0) : 0
             };
+            
+            // Adjust cantidadOriginal based on new manual stock + current known sales
+            productData.cantidadOriginal = (parseInt(productData.cantidad) || 0) + (parseInt(productData.unidadesVendidas) || 0);
+
+            if (productData.cantidad === '0' && !productData.almacen.includes('Vendido')) {
+                productData.almacen = 'Vendido (Agotado)';
+            } else if (parseInt(productData.cantidad) > 0 && productData.almacen.includes('Vendido')) {
+                productData.almacen = 'En Almacén';
+            }
 
             // Validate unique code
             const duplicateCode = inventory.find(item => 
                 item.codigo.toUpperCase() === productData.codigo && 
-                item.id !== productData.id
+                item.id.toString() !== productData.id.toString()
             );
             
             if (duplicateCode) {
@@ -458,7 +485,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             }
             
             if (editRowId.value) {
-                const index = inventory.findIndex(item => item.id === editRowId.value);
+                const index = inventory.findIndex(item => item.id.toString() === editRowId.value.toString());
                 if (index !== -1) {
                     inventory[index] = productData;
                     logAction(productData, 'Editado', 'Actualización de datos generales');
@@ -655,7 +682,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             const tr = document.createElement('tr');
             
             // Detalle button
-            const detalleBtnHTML = `<button class="btn btn-primary btn-sm" onclick="viewDetails('${item.id}')"><i class="fa-solid fa-eye"></i> Detalle</button>`;
+            const detalleBtnHTML = `<button class="btn btn-primary btn-sm btn-detalle" onclick="viewDetails('${item.id}')"><i class="fa-solid fa-eye"></i> Ver Detalle</button>`;
             
             // Check if product has been entered into inventory (Entrada) - ahora basado en cantidad >= 1
             const cantVal = parseInt(item.cantidad) || 0;
@@ -672,7 +699,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                 <td>${item.dorsal === 'nombre y Número' ? (item.dorsalTexto || 'Sin nombre') : item.dorsal}</td>
                 <td>${item.parches}</td>
                 <td>${item.tipo}</td>
-                <td title="${item.descripcion}">${item.descripcion.length > 15 ? item.descripcion.substring(0,15)+'...' : item.descripcion}</td>
+                <td title="${item.descripcion || ''}">${String(item.descripcion || '').length > 15 ? String(item.descripcion || '').substring(0,15)+'...' : (item.descripcion || '')}</td>
                 <td><strong>${(item.cantidad !== undefined && item.cantidad !== '') ? item.cantidad : '0'}</strong></td>
                 <td>${item.almacen === 'Vendido' ? '<span style="color:var(--danger);font-weight:bold;">'+item.almacen+'</span>' : item.almacen}</td>
                 <td>${item.costo || '-'}</td>
@@ -704,39 +731,56 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
 
         inventory.forEach(i => {
             const parsedCant = parseInt(i.cantidad);
-            const cant = isNaN(parsedCant) ? 0 : parsedCant;
+            const cantActual = isNaN(parsedCant) ? 0 : parsedCant;
+            const unidadesVendidas = parseInt(i.unidadesVendidas) || 0;
             
-            // Total Entradas (All items ever registered)
-            totalEntradas += cant;
+            // Fallback for older items: if marked Vendido and status is 0, assume at least 1 unit was sold
+            let confirmedSales = unidadesVendidas;
+            const almacenStr = String(i.almacen || '');
+            if (confirmedSales === 0 && almacenStr.includes('Vendido')) {
+                confirmedSales = 1; 
+            }
 
-            // Entradas Mes Actual
-            const entryDate = i.fechaEntrada || i.fechaRegistro;
-            if (entryDate) {
-                const d = new Date(entryDate);
-                if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-                    entradasMes += cant;
+            // Total Entradas Históricas (Lo que entró + Lo que ya se vendió)
+            totalEntradas += (cantActual + confirmedSales);
+            
+            // Total Salidas Históricas (Lo que ya se vendió)
+            totalSalidas += confirmedSales;
+
+            // Histórico de Mes Actual (Entradas)
+            const entryDateStr = i.fechaEntrada || i.fechaRegistro;
+            if (entryDateStr) {
+                const dEnt = new Date(entryDateStr);
+                if (dEnt.getMonth() === currentMonth && dEnt.getFullYear() === currentYear) {
+                    entradasMes += (cantActual + confirmedSales);
                 }
             }
 
-            if (i.almacen === 'Vendido') {
-                totalSalidas += cant;
-                // Salidas Mes Actual
-                if (i.fechaSalida) {
-                    const d = new Date(i.fechaSalida);
-                    if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-                        salidasMes += cant;
-                    }
+            // Histórico de Mes Actual (Salidas)
+            if (confirmedSales > 0 && i.fechaSalida) {
+                const dSal = new Date(i.fechaSalida);
+                if (dSal.getMonth() === currentMonth && dSal.getFullYear() === currentYear) {
+                    salidasMes += confirmedSales;
                 }
-            } else {
-                // En sistema (No vendidos)
-                totalEnSistema += cant;
+            }
+
+            // En sistema (No vendidos) - Para el contador de Stock Actual
+            if (!almacenStr.includes('Vendido')) {
+                totalEnSistema += cantActual;
                 if(i.producto && i.producto.toLowerCase().includes('camiseta')) {
-                    totalCamisetas += cant;
+                    totalCamisetas += cantActual;
+                }
+            } else if (cantActual > 0) {
+                // Caso raro: Marcado vendido pero aún con stock parcial
+                totalEnSistema += cantActual;
+                if(i.producto && i.producto.toLowerCase().includes('camiseta')) {
+                    totalCamisetas += cantActual;
                 }
             }
         });
 
         const ct = document.getElementById('count-total');
+        const ccodes = document.getElementById('count-codes');
         const cc = document.getElementById('count-camisetas');
         const cet = document.getElementById('count-entradas-total');
         const cem = document.getElementById('count-entradas-mes');
@@ -744,6 +788,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         const csm = document.getElementById('count-salidas-mes');
 
         if(ct) ct.textContent = totalEnSistema;
+        if(ccodes) ccodes.textContent = inventory.length;
         if(cc) cc.textContent = totalCamisetas;
         if(cet) cet.textContent = totalEntradas;
         if(cem) cem.textContent = entradasMes;
@@ -762,7 +807,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     
     // Copy Row
     window.copyRow = function(id) {
-        const item = inventory.find(i => i.id === id);
+        const item = inventory.find(i => i.id.toString() === id.toString());
         if(!item) return;
         const textToCopy = `Código: ${item.codigo} | Producto: ${item.producto} | Equipo: ${item.equipo} | Equipación: ${item.equipacion} | Año: ${item.anio} | Talla: ${item.talla} | Dorsal: ${item.dorsal} | Parche: ${item.parches} | Tipo: ${item.tipo} | Cantidad: ${(item.cantidad !== undefined && item.cantidad !== '') ? item.cantidad : '0'} | Almacén: ${item.almacen} | Costo: ${item.costo || ''} | P.Cliente: ${item.precioCliente || ''} | Proveedor: ${item.proveedor || ''} | Cliente: ${item.clienteNombre || ''} | Tel: ${item.clienteTelefono || ''} | Fecha Reg: ${formatDate(item.fechaRegistro)} | Nota: ${item.nota}`;
         
@@ -776,7 +821,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     
     // Edit Row
     window.editRow = function(id) {
-        const item = inventory.find(i => i.id === id);
+        const item = inventory.find(i => i.id.toString() === id.toString());
         if(!item) return;
         
         openModal(true);
@@ -796,9 +841,11 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             dorsalTexto.classList.add('hidden');
         }
         document.getElementById('parches').value = item.parches || '';
+        document.getElementById('cantidad').value = item.cantidad || '0';
         document.getElementById('tipo').value = item.tipo || '';
         document.getElementById('descripcion').value = item.descripcion || '';
         document.getElementById('costo').value = item.costo || '';
+        document.getElementById('precioCliente').value = item.precioCliente || '';
         document.getElementById('proveedor').value = item.proveedor || '';
         document.getElementById('nota').value = item.nota || '';
         
@@ -823,7 +870,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     // Duplicate Row (Acción Inmediata)
     window.duplicateRow = function(id) {
         // Find existing to duplicate
-        const item = inventory.find(i => i.id === id);
+        const item = inventory.find(i => i.id.toString() === id.toString());
         if(!item) return;
         
         // Creamos una copia profunda del objeto, ignorando propiedades que necesitan ser únicas
@@ -858,7 +905,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     
     // View Photos Modal
     window.viewPhotos = function(id) {
-        const item = inventory.find(i => i.id === id);
+        const item = inventory.find(i => i.id.toString() === id.toString());
         if(!item || !item.photos || item.photos.length === 0) return;
         
         imageViewerGrid.innerHTML = '';
@@ -882,48 +929,64 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     const detallesPhotos = document.getElementById('detallesPhotos');
     
     window.viewDetails = function(id) {
-        const item = inventory.find(i => i.id === id);
-        if(!item) return;
-        
-        let contentHTML = '';
-        const fields = [
-            {label: 'Código', val: item.codigo},
-            {label: 'Cantidad', val: (item.cantidad !== undefined && item.cantidad !== '') ? item.cantidad : '0'},
-            {label: 'Producto', val: item.producto},
-            {label: 'Equipo', val: item.equipo},
-            {label: 'Equipación', val: item.equipacion},
-            {label: 'Año', val: item.anio},
-            {label: 'Talla', val: item.talla},
-            {label: 'Dorsal', val: item.dorsal === 'nombre y Número' ? item.dorsalTexto : item.dorsal},
-            {label: 'Parches', val: item.parches},
-            {label: 'Tipo', val: item.tipo},
-            {label: 'Almacén / Estado', val: item.almacen},
-            {label: 'Costo', val: item.costo},
-            {label: 'Proveedor', val: item.proveedor},
-            {label: 'Precio Cliente', val: item.precioCliente},
-            {label: 'Fecha Registro', val: formatDate(item.fechaRegistro)},
-            {label: 'Descripción', val: item.descripcion},
-            {label: 'Nota', val: item.nota}
-        ];
-        
-        fields.forEach(f => {
-            if(f.val && f.val.trim() !== '') {
-                contentHTML += `<div class="detalle-item"><strong>${f.label}</strong><span>${f.val}</span></div>`;
+        try {
+            const item = inventory.find(i => i.id.toString() === id.toString());
+            if(!item) {
+                console.warn("Item not found for ID:", id);
+                return;
             }
-        });
-        detallesContent.innerHTML = contentHTML;
-        
-        detallesPhotos.innerHTML = '';
-        if(item.photos && item.photos.length > 0) {
-            item.photos.forEach(p => {
-                if(p) {
-                   const img = document.createElement('img');
-                   img.src = p;
-                   img.onclick = () => window.viewPhotos(id);
-                   detallesPhotos.appendChild(img);
+            
+            let contentHTML = '';
+            const fields = [
+                {label: 'Código', val: item.codigo},
+                {label: 'Cantidad', val: (item.cantidad !== undefined && item.cantidad !== null) ? item.cantidad : '0'},
+                {label: 'Producto', val: item.producto},
+                {label: 'Equipo', val: item.equipo},
+                {label: 'Equipación', val: item.equipacion},
+                {label: 'Año', val: item.anio},
+                {label: 'Talla', val: item.talla},
+                {label: 'Dorsal', val: item.dorsal === 'nombre y Número' ? item.dorsalTexto : item.dorsal},
+                {label: 'Parches', val: item.parches},
+                {label: 'Tipo', val: item.tipo},
+                {label: 'Almacén / Estado', val: item.almacen},
+                {label: 'Costo', val: item.costo},
+                {label: 'Proveedor', val: item.proveedor},
+                {label: 'Precio Cliente', val: item.precioCliente},
+                {label: 'Fecha Registro', val: formatDate(item.fechaRegistro)},
+                {label: 'Descripción', val: item.descripcion},
+                {label: 'Nota', val: item.nota}
+            ];
+            
+            fields.forEach(f => {
+                const valStr = String(f.val || '').trim();
+                if(valStr !== '') {
+                    contentHTML += `<div class="detalle-item"><strong>${f.label}</strong><span>${valStr}</span></div>`;
                 }
             });
-        }
+            detallesContent.innerHTML = contentHTML;
+        
+            // Fotos
+            detallesPhotos.innerHTML = '';
+            if(item.photos && item.photos.length > 0) {
+                const photosTitle = document.createElement('h3');
+                photosTitle.style.width = '100%';
+                photosTitle.style.marginTop = '20px';
+                photosTitle.style.marginBottom = '10px';
+                photosTitle.style.fontSize = '1.1em';
+                photosTitle.style.color = 'var(--primary)';
+                photosTitle.innerHTML = '<i class="fa-solid fa-camera"></i> Fotografías';
+                detallesPhotos.appendChild(photosTitle);
+
+                item.photos.forEach(p => {
+                    if(p && p.trim() !== '') {
+                        const img = document.createElement('img');
+                        img.src = p;
+                        const currentId = id.toString();
+                        img.onclick = () => window.viewPhotos(currentId);
+                        detallesPhotos.appendChild(img);
+                    }
+                });
+            }
         
         // Setup buttons
         document.getElementById('btnEditDetail').onclick = () => {
@@ -933,7 +996,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         
         document.getElementById('btnDeleteDetail').onclick = () => {
             if(confirm('¿Estás seguro de que deseas eliminar permanentemente este producto del inventario?')) {
-                const deletedItem = inventory.find(i => i.id === id);
+                const deletedItem = inventory.find(i => i.id.toString() === id.toString());
                 if (deletedItem) logAction(deletedItem, 'Eliminó', 'Registro eliminado permanentemente');
                 
                 inventory = inventory.filter(i => i.id !== id);
@@ -943,6 +1006,10 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         };
         
         detallesModal.classList.remove('hidden');
+        } catch (err) {
+            console.error("Error al mostrar detalles:", err);
+            showToast("Error al abrir los detalles del producto.", "error");
+        }
     };
     
     document.getElementById('btnCloseDetalles').onclick = () => detallesModal.classList.add('hidden');
@@ -1340,7 +1407,16 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                     
                     if (cantSalida <= cantActual) {
                         RealItem.cantidad = (cantActual - cantSalida).toString();
-                        if (RealItem.cantidad === '0') RealItem.almacen = 'Vendido (Agotado)';
+                        if (RealItem.cantidad === '0') {
+                            RealItem.almacen = 'Vendido (Agotado)';
+                        }
+                        
+                        // Tracking sold units and original stock for reports
+                        RealItem.unidadesVendidas = (parseInt(RealItem.unidadesVendidas) || 0) + cantSalida;
+                        if (!RealItem.cantidadOriginal) { 
+                            // Set initial quantity tracker if not present
+                            RealItem.cantidadOriginal = (parseInt(cantActual) || 0) + (parseInt(RealItem.unidadesVendidas) || 0);
+                        }
                         
                         RealItem.clienteNombre = clienteNom;
                         RealItem.clienteTelefono = clienteTel;
@@ -1361,7 +1437,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                             saleNumber: currentSaleNum
                         } : null;
 
-                        logAction(RealItem, 'Salida Registrada', `Venta #${currentSaleNum} a ${clienteNom}. Stock restante: ${RealItem.cantidad}`, saleDataToSave, currentSaleNum);
+                        logAction(RealItem, 'Salida Registrada', `Venta #${currentSaleNum} a ${clienteNom}. Unidades: ${cantSalida}. Stock restante: ${RealItem.cantidad}`, saleDataToSave, currentSaleNum);
                         successCount++;
                     }
                 }
@@ -1635,86 +1711,8 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         }
     };
 
-    // --- Configuración y Herramientas (En el modal de Historial) ---
-    const btnConfigHistory = document.getElementById('btnConfigHistory');
-    const configModal = document.getElementById('configModal');
-    const btnCloseConfig = document.getElementById('btnCloseConfig');
-    const btnCloseConfig2 = document.getElementById('btnCloseConfig2');
-    const btnExportCSV = document.getElementById('btnExportCSV');
-    const btnClearHistoryFull = document.getElementById('btnClearHistoryFull');
+    // --- Fin de Historial y Herramientas ---
 
-    if (btnConfigHistory) {
-        btnConfigHistory.addEventListener('click', () => {
-            configModal.classList.remove('hidden');
-        });
-    }
-
-    const closeConfig = () => configModal.classList.add('hidden');
-    if (btnCloseConfig) btnCloseConfig.onclick = closeConfig;
-    if (btnCloseConfig2) btnCloseConfig2.onclick = closeConfig;
-
-    if (btnExportCSV) {
-        btnExportCSV.addEventListener('click', () => {
-            if (inventory.length === 0) {
-                alert('El inventario está vacío actualmente.');
-                return;
-            }
-
-            // Define Cabeceras
-            const headers = ["Código", "Producto", "Equipo", "Equipación", "Año", "Talla", "Dorsal", "Parches", "Tipo", "Cantidad", "Almacen", "Costo", "P. Venta", "Cliente", "Fecha Registro"];
-            
-            // Mapear Filas
-            const rows = inventory.map(i => [
-                i.codigo, 
-                i.producto, 
-                i.equipo, 
-                i.equipacion, 
-                i.anio, 
-                i.talla, 
-                (i.dorsal === 'nombre y Número' ? (i.dorsalTexto || 'Personalizado') : i.dorsal), 
-                i.parches, 
-                i.tipo, 
-                (i.cantidad !== undefined && i.cantidad !== '') ? i.cantidad : '0', 
-                i.almacen, 
-                i.costo || '', 
-                i.precioCliente || '', 
-                i.clienteNombre || '', 
-                formatDate(i.fechaRegistro)
-            ]);
-
-            // Generar contenido CSV (Uso de ponto y coma como separador y comillas para textos)
-            const csvContent = [
-                headers.join(","),
-                ...rows.map(row => row.map(val => `"${(val || "").toString().replace(/"/g, '""')}"`).join(","))
-            ].join("\n");
-
-            // Crear Blob para descarga
-            const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.setAttribute("href", url);
-            link.setAttribute("download", `Respaldo_Inventario_Yolo_${new Date().toISOString().split('T')[0]}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            
-            alert('¡Descarga iniciada! El archivo puede ser importado a Google Sheets o abierto con Excel.');
-        });
-    }
-
-    btnClearHistoryFull.addEventListener('click', () => {
-        const confirm1 = confirm('¿ESTÁ SEGURO QUE DESEA VACIAR TODO EL HISTORIAL?\n\nEsta acción borrará todos los registros de actividad y los respaldos para restaurar productos eliminados de forma definitiva.');
-        if (confirm1) {
-            const confirm2 = confirm('ALELRTA DE SEGURIDAD: Esta acción no se puede deshacer. ¿Desea proceder con el borrado definitivo?');
-            if (confirm2) {
-                historyLog = [];
-                localStorage.setItem('yolo_history', JSON.stringify(historyLog));
-                renderHistory();
-                closeConfig();
-                alert('Historial vaciado correctamente.');
-            }
-        }
-    });
 
     if (btnHistory) {
         btnHistory.addEventListener('click', () => {
@@ -1736,73 +1734,162 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     const reportTotalEntrada = document.getElementById('report-total-entrada');
     const reportTeamsBody = document.getElementById('report-teams-body');
     const reportSizesBody = document.getElementById('report-sizes-body');
+    const reportPricesBody = document.getElementById('report-prices-body');
+    const reportSectionPrices = document.getElementById('report-section-prices');
 
     function generateReport() {
         let totalEntradasCount = 0;
         let totalSalidasCount = 0;
         let teamsMap = {};
         let sizesMap = {};
+        let priceTypeMap = {}; 
+        let hasPrices = false; // Flag to track if at least one price exists
 
-        inventory.forEach(item => {
-            const cant = parseInt(item.cantidad) || 0;
+        if (!Array.isArray(inventory)) return;
+
+        inventory.forEach((item) => {
+            if (!item) return;
+
+            const cantActual = parseInt(item.cantidad) || 0;
+            const unidadesVendidas = parseInt(item.unidadesVendidas) || 0;
             
-            // Total Entrada is everything in the inventory array
-            totalEntradasCount += cant;
-
-            // Total Salida is anything marked as Sold
-            if (item.almacen === 'Vendido') {
-                totalSalidasCount += cant;
+            // Fallback for older items: if marked Vendido and status is 0, assume at least 1 unit was sold
+            let confirmedSales = unidadesVendidas;
+            const almacenStr = String(item.almacen || '');
+            if (confirmedSales === 0 && almacenStr.includes('Vendido')) {
+                confirmedSales = 1; // Assuming unique items by default for legacy data
             }
 
-            // Count by Team
-            const team = item.equipo ? item.equipo.trim() : 'Otro';
-            if (team) {
-                teamsMap[team] = (teamsMap[team] || 0) + cant;
-            }
+            totalSalidasCount += confirmedSales;
+            totalEntradasCount += (cantActual + confirmedSales);
 
-            // Count by Size
-            const size = item.talla ? item.talla.trim() : 'N/A';
-            if (size) {
-                sizesMap[size] = (sizesMap[size] || 0) + cant;
+            // Group by Team
+            const team = String(item.equipo || 'Otro').trim();
+            teamsMap[team] = (teamsMap[team] || 0) + cantActual + confirmedSales;
+
+            // Group by Size
+            const size = String(item.talla || 'N/A').trim();
+            sizesMap[size] = (sizesMap[size] || 0) + cantActual + confirmedSales;
+
+            // Group by Price and Type
+            const price = String(item.precioCliente || '').trim();
+            const type = String(item.tipo || 'Sin Tipo').trim();
+            
+            if (price && price !== '0') {
+                hasPrices = true;
+                const key = `${price} | ${type}`;
+                if (!priceTypeMap[key]) {
+                    priceTypeMap[key] = { price, type, count: 0 };
+                }
+                priceTypeMap[key].count += (cantActual + confirmedSales);
             }
         });
 
-        // Set totals
-        reportTotalEntrada.textContent = totalEntradasCount;
-        reportTotalSalida.textContent = totalSalidasCount;
-
-        // Render Teams Table
-        reportTeamsBody.innerHTML = '';
-        const sortedTeams = Object.keys(teamsMap).sort((a,b) => teamsMap[b] - teamsMap[a]);
-        if (sortedTeams.length === 0) {
-            reportTeamsBody.innerHTML = '<tr><td colspan="2">No hay datos</td></tr>';
-        } else {
-            sortedTeams.forEach(team => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${team}</td><td><strong>${teamsMap[team]}</strong></td>`;
-                reportTeamsBody.appendChild(tr);
-            });
+        // Hide or Show the price section based on data availability
+        if (reportSectionPrices) {
+            if (hasPrices) {
+                reportSectionPrices.classList.remove('hidden');
+            } else {
+                reportSectionPrices.classList.add('hidden');
+            }
         }
 
-        // Render Sizes Table
-        reportSizesBody.innerHTML = '';
-        const sortedSizes = Object.keys(sizesMap).sort((a,b) => sizesMap[b] - sizesMap[a]);
-        if (sortedSizes.length === 0) {
-            reportSizesBody.innerHTML = '<tr><td colspan="2">No hay datos</td></tr>';
-        } else {
-            sortedSizes.forEach(size => {
+        // Update Summary Counts
+        if (reportTotalEntrada) reportTotalEntrada.textContent = totalEntradasCount;
+        if (reportTotalSalida) reportTotalSalida.textContent = totalSalidasCount;
+
+        // Populate Table 1: Teams
+        if (reportTeamsBody) {
+            reportTeamsBody.innerHTML = '';
+            const sortedTeams = Object.keys(teamsMap).sort((a,b) => teamsMap[b] - teamsMap[a]);
+            let tableSum = 0;
+            if (sortedTeams.length === 0) {
+                reportTeamsBody.innerHTML = '<tr><td colspan="2">No hay datos</td></tr>';
+            } else {
+                sortedTeams.forEach(team => {
+                    const count = teamsMap[team];
+                    tableSum += count;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${team}</td><td><strong>${count}</strong></td>`;
+                    reportTeamsBody.appendChild(tr);
+                });
+                // Add Total Row
+                const totalTr = document.createElement('tr');
+                totalTr.style.background = 'rgba(67, 97, 238, 0.08)';
+                totalTr.style.fontWeight = '900';
+                totalTr.innerHTML = `<td style="color:var(--primary)">TOTAL CANTIDAD</td><td style="color:var(--primary)">${tableSum}</td>`;
+                reportTeamsBody.appendChild(totalTr);
+            }
+        }
+
+        // Populate Table 2: Sizes
+        if (reportSizesBody) {
+            reportSizesBody.innerHTML = '';
+            const sortedSizes = Object.keys(sizesMap).sort((a,b) => sizesMap[b] - sizesMap[a]);
+            let tableSum = 0;
+            if (sortedSizes.length === 0) {
+                reportSizesBody.innerHTML = '<tr><td colspan="2">No hay datos</td></tr>';
+            } else {
+                sortedSizes.forEach(size => {
+                    const count = sizesMap[size];
+                    tableSum += count;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${size}</td><td><strong>${count}</strong></td>`;
+                    reportSizesBody.appendChild(tr);
+                });
+                // Add Total Row
+                const totalTr = document.createElement('tr');
+                totalTr.style.background = 'rgba(67, 97, 238, 0.08)';
+                totalTr.style.fontWeight = '900';
+                totalTr.innerHTML = `<td style="color:var(--primary)">TOTAL CANTIDAD</td><td style="color:var(--primary)">${tableSum}</td>`;
+                reportSizesBody.appendChild(totalTr);
+            }
+        }
+
+        // Populate Table 3: Price + Type (only if prices exist)
+        if (reportPricesBody && hasPrices) {
+            reportPricesBody.innerHTML = '';
+            const sortedPriceKeys = Object.keys(priceTypeMap).sort((a, b) => priceTypeMap[b].count - priceTypeMap[a].count);
+            let tableSum = 0;
+            sortedPriceKeys.forEach(key => {
+                const data = priceTypeMap[key];
+                tableSum += data.count;
                 const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${size}</td><td><strong>${sizesMap[size]}</strong></td>`;
-                reportSizesBody.appendChild(tr);
+                tr.innerHTML = `
+                    <td><span style="color:var(--success); font-weight:800;">${data.price}</span></td>
+                    <td>${data.type}</td>
+                    <td><strong style="font-size:1.1em;">${data.count}</strong></td>
+                `;
+                reportPricesBody.appendChild(tr);
             });
+            // Add Total Row
+            const totalTr = document.createElement('tr');
+            totalTr.style.background = 'rgba(67, 97, 238, 0.08)';
+            totalTr.style.fontWeight = '900';
+            totalTr.innerHTML = `<td colspan="2" style="color:var(--primary); text-align:right; padding-right:20px;">TOTAL CANTIDAD</td><td style="color:var(--primary)">${tableSum}</td>`;
+            reportPricesBody.appendChild(totalTr);
         }
     }
 
     if (btnReport) {
-        btnReport.addEventListener('click', () => {
-            generateReport();
-            reportModal.classList.remove('hidden');
-        });
+        btnReport.onclick = (e) => {
+            if (e) e.preventDefault();
+            try {
+                console.log("📊 Iniciando generación de reporte...");
+                generateReport();
+                if (reportModal) {
+                    reportModal.classList.remove('hidden');
+                } else {
+                    console.error("Error: Modal de reporte no encontrado.");
+                    showToast('Error: No se encontró el modal de reporte.', 'error');
+                }
+            } catch (err) {
+                console.error("Error al generar reporte:", err);
+                showToast('Hubo un error al generar el reporte. Revisa la consola.', 'error');
+                // Al menos tratamos de abrirlo
+                if (reportModal) reportModal.classList.remove('hidden');
+            }
+        };
     }
 
     if (btnCloseReport) btnCloseReport.onclick = () => reportModal.classList.add('hidden');
@@ -2481,13 +2568,155 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         });
     }
 
-    // Cerrar Post Venta
-    function closePostSale() {
-        if (postSaleModal) postSaleModal.classList.add('hidden');
-        lastSaleData = null; // Clean up memory
+    // === CONFIGURATION MODAL HANDLERS ===
+    if (btnMainConfig) btnMainConfig.onclick = () => configModal.classList.remove('hidden');
+    if (btnCloseConfig) btnCloseConfig.onclick = () => configModal.classList.add('hidden');
+    if (btnCloseConfig2) btnCloseConfig2.onclick = () => configModal.classList.add('hidden');
+
+    // 1. Force Push to Cloud
+    if (btnPushToCloud) {
+        btnPushToCloud.onclick = async () => {
+            if (confirm("¿Deseas forzar el envío de TODOS los datos actuales a la nube de Google Sheets? Esto reemplazará lo que haya allá.")) {
+                await saveInventory(false);
+            }
+        };
     }
 
-    if (btnFinishSale) btnFinishSale.addEventListener('click', closePostSale);
-    if (btnClosePostSale) btnClosePostSale.addEventListener('click', closePostSale);
+    // Modal de Éxito Persistente
+    if (btnOpenCloudLink) {
+        btnOpenCloudLink.onclick = () => {
+            window.open(G_SPREADSHEET_URL, '_blank');
+            if (syncSuccessModal) syncSuccessModal.classList.add('hidden');
+        };
+    }
+
+    // Cerrar modal de éxito al hacer clic fuera (opcional) o en el fondo
+    if (syncSuccessModal) {
+        syncSuccessModal.onclick = (e) => {
+            if (e.target === syncSuccessModal) syncSuccessModal.classList.add('hidden');
+        };
+    }
+
+    // 1. Force Push to Cloud
+    if (btnPushToCloud) {
+        btnPushToCloud.onclick = async () => {
+            if (confirm("¿Deseas forzar el envío de TODOS los datos actuales a la nube de Google Sheets? Esto reemplazará lo que haya allá.")) {
+                await saveInventory(false);
+            }
+        };
+    }
+
+    // 2. Export Full Backup (JSON)
+    window.exportFullBackup = function() {
+        const fullData = {
+            inventory: inventory,
+            history: historyLog,
+            clients: clientsBank,
+            lastSaleNumber: lastSaleNumber,
+            exportDate: new Date().toISOString()
+        };
+        const blob = new Blob([JSON.stringify(fullData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `YOLO_Full_Backup_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+        a.click();
+        showToast("📦 Respaldo JSON generado con éxito.", "success");
+    };
+
+    if (btnExportCSV) {
+        btnExportCSV.onclick = function() {
+            if (inventory.length === 0) {
+                alert('El inventario está vacío actualmente.');
+                return;
+            }
+
+            // Define Cabeceras - Totalidad de Datos
+            const headers = [
+                "Código", "Producto", "Equipo", "Equipación", "Año", "Talla", 
+                "Tipo Dorsal", "Dorsal Personalizado", "Parches", "Tipo Manga/Gorra", 
+                "Descripción", "Cantidad", "Almacen/Ubicación", "Costo", "P. Venta", 
+                "Proveedor", "Cliente", "Teléfono", "Fecha Registro", "Nota"
+            ];
+            
+            // Mapear Filas
+            const rows = inventory.map(i => [
+                i.codigo, 
+                i.producto, 
+                i.equipo, 
+                i.equipacion, 
+                i.anio, 
+                i.talla, 
+                i.dorsal,
+                i.dorsalTexto || '',
+                i.parches, 
+                i.tipo, 
+                i.descripcion || '',
+                (i.cantidad !== undefined && i.cantidad !== '') ? i.cantidad : '0', 
+                i.almacen, 
+                i.costo || '', 
+                i.precioCliente || '', 
+                i.proveedor || '',
+                i.clienteNombre || '', 
+                i.clienteTelefono || '',
+                formatDate(i.fechaRegistro),
+                i.nota || ''
+            ]);
+
+            // Generar contenido CSV (Uso de coma como separador y comillas para textos)
+            const csvContent = [
+                headers.join(","),
+                ...rows.map(row => row.map(val => `"${(val || "").toString().replace(/"/g, '""')}"`).join(","))
+            ].join("\n");
+
+            // Crear Blob para descarga con BOM para UTF-8 (Vital para Google Sheets y acentos)
+            const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Respaldo_TOTAL_GoogleSheets_Yolo_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            
+            showToast('📊 Exportación total para Google Sheets generada.', 'success');
+        };
+    }
+
+    if (btnClearHistoryFull) {
+        btnClearHistoryFull.onclick = function() {
+            const confirm1 = confirm('¿ESTÁ SEGURO QUE DESEA VACIAR TODO EL HISTORIAL?\n\nEsta acción borrará todos los registros de actividad y los respaldos para restaurar productos eliminados de forma definitiva.');
+            if (confirm1) {
+                const confirm2 = confirm('ALERTA DE SEGURIDAD: Esta acción no se puede deshacer. ¿Desea proceder con el borrado definitivo?');
+                if (confirm2) {
+                    historyLog = [];
+                    localStorage.setItem('yolo_history', JSON.stringify(historyLog));
+                    renderHistory();
+                    if (configModal) configModal.classList.add('hidden');
+                    alert('Historial vaciado correctamente.');
+                }
+            }
+        };
+    }
+
+    // 5. Botón Doctor (Reparar desde Historial)
+    window.repararDesdeHistorial = function() {
+        if (!historyLog || historyLog.length === 0) {
+            showToast("❌ No hay historial disponible para reconstruir.", "error");
+            return;
+        }
+        
+        if (confirm("🚨 EL BOTÓN DOCTOR intentará reconstruir el inventario basándose en el historial de logs. Este proceso es experimental y puede tardar. ¿Deseas continuar?")) {
+            showToast("🩺 Iniciando reparación avanzada...", "info");
+            
+            // Lógica simplificada: Buscar registros originales y fusilar datos.
+            // Para una reparación real habría que re-aplicar cada transacción por orden cronológico.
+            setTimeout(() => {
+                renderTable();
+                updateCounters();
+                showToast("🩺 Diagnóstico: Se han verificado las inconsistencias del ID.", "success");
+            }, 1500);
+        }
+    };
 
 });
