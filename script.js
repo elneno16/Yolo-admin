@@ -7,23 +7,23 @@ document.addEventListener('DOMContentLoaded', () => {
     let inventory = JSON.parse(localStorage.getItem('yolo_inventory')) || [];
 
     // Función para Cargar Datos desde la Nube (Prioridad Máxima)
-    async function loadFromCloud() {
+    async function loadFromCloud(silent = true, isForced = false) {
         try {
             console.log("🔄 Sincronizando con la nube...");
             const response = await fetch(G_SHEET_API);
             const cloudData = await response.json();
             
             if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
-                // Solo sobreescribir si la nube tiene más o igual datos que local
-                // O si local está vacío, para evitar borrar progresos no subidos
-                if (cloudData.length >= inventory.length || inventory.length === 0) {
+                // Si es forzado, o si la nube tiene más datos (o igual si local está vacío)
+                if (isForced || cloudData.length >= inventory.length || inventory.length === 0) {
                     inventory = cloudData;
                     localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
                     renderTable();
                     updateCounters();
+                    if (!silent) showToast("✅ Sincronización completa: Los datos de la nube ahora mandan.", "success");
                     console.log("✅ Sincronización completa: Google Sheets manda.");
                 } else {
-                    console.log("ℹ️ Local tiene más datos que la nube. Ignorando descarga para proteger cambios locales.");
+                    console.log("ℹ️ Local tiene más datos que la nube. Ignorando descarga automática.");
                 }
             } else {
                 checkInitialData();
@@ -193,6 +193,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     const btnCloseConfig = document.getElementById('btnCloseConfig');
     const btnCloseConfig2 = document.getElementById('btnCloseConfig2');
     const btnPushToCloud = document.getElementById('btnPushToCloud');
+    const btnPullFromCloud = document.getElementById('btnPullFromCloud');
     const btnExportCSV = document.getElementById('btnExportCSV');
     const btnClearHistoryFull = document.getElementById('btnClearHistoryFull');
     const btnExportJSON = document.getElementById('btnExportJSON');
@@ -2573,11 +2574,20 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     if (btnCloseConfig) btnCloseConfig.onclick = () => configModal.classList.add('hidden');
     if (btnCloseConfig2) btnCloseConfig2.onclick = () => configModal.classList.add('hidden');
 
-    // 1. Force Push to Cloud
+    // 1. Force Push to Cloud (PC -> Nube)
     if (btnPushToCloud) {
         btnPushToCloud.onclick = async () => {
-            if (confirm("¿Deseas forzar el envío de TODOS los datos actuales a la nube de Google Sheets? Esto reemplazará lo que haya allá.")) {
+            if (confirm("🚨 ¿Deseas ENVIAR todos tus datos locales de esta PC a la Nube?\n\nADVERTENCIA: Esto reemplazará lo que haya en Google Sheets con tus datos actuales.")) {
                 await saveInventory(false);
+            }
+        };
+    }
+
+    // 2. Sync From Cloud (Nube -> Esta PC)
+    if (btnPullFromCloud) {
+        btnPullFromCloud.onclick = async () => {
+            if (confirm("🚨 ¿Deseas DESCARGAR la información de la Nube a esta PC?\n\nADVERTENCIA: Esto reemplazará tus datos locales con lo que hay en Google Sheets. Úsalo para ver cambios hechos desde tu celular.")) {
+                await loadFromCloud(false, true);
             }
         };
     }
@@ -2590,19 +2600,10 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         };
     }
 
-    // Cerrar modal de éxito al hacer clic fuera (opcional) o en el fondo
+    // Cerrar modal de éxito al hacer clic fuera (fondo)
     if (syncSuccessModal) {
         syncSuccessModal.onclick = (e) => {
             if (e.target === syncSuccessModal) syncSuccessModal.classList.add('hidden');
-        };
-    }
-
-    // 1. Force Push to Cloud
-    if (btnPushToCloud) {
-        btnPushToCloud.onclick = async () => {
-            if (confirm("¿Deseas forzar el envío de TODOS los datos actuales a la nube de Google Sheets? Esto reemplazará lo que haya allá.")) {
-                await saveInventory(false);
-            }
         };
     }
 
@@ -2718,5 +2719,9 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             }, 1500);
         }
     };
+    
+    // === 6. INITIAL SYNC ON STARTUP ===
+    // Intentamos cargar lo más nuevo de la nube al abrir para que la PC esté siempre al día
+    loadFromCloud(true, false);
 
 });
