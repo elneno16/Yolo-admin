@@ -16,11 +16,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
                 // Si es forzado, o si la nube tiene más datos (o igual si local está vacío)
                 if (isForced || cloudData.length >= inventory.length || inventory.length === 0) {
-                    inventory = cloudData;
+                    // Pre-deduplicate incoming cloud data by full attribute match
+                    const seen = new Set();
+                    inventory = cloudData.filter(item => {
+                        const key = `${item.codigo.toUpperCase()}-${(item.equipo||'').toUpperCase()}-${item.talla}-${item.cantidad}`;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+                    
                     localStorage.setItem('yolo_inventory', JSON.stringify(inventory));
                     renderTable();
                     updateCounters();
-                    if (!silent) showToast("✅ Sincronización completa: Los datos de la nube ahora mandan.", "success");
+                    if (!silent) showToast("✅ Sincronización completa: Datos limpios descargados.", "success");
                     console.log("✅ Sincronización completa: Google Sheets manda.");
                 } else {
                     console.log("ℹ️ Local tiene más datos que la nube. Ignorando descarga automática.");
@@ -161,7 +169,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     let entryHistActive = false; // Flag for Entry History mode
     let selectedEntryMonths = [0,1,2,3,4,5,6,7,8,9,10,11];
     let selectedEntryAttributes = {
-        producto: '', equipo: '', equipacion: '', anio: '', talla: '', dorsal: '', parches: '', tipo: ''
+        producto: '', equipo: '', equipacion: '', anio: '', talla: '', dorsal: '', parches: '', tipo: '', almacen: '', descripcion: '', nota: ''
     };
 
     // DOM Elements
@@ -232,8 +240,8 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         
         historyLog.unshift(logEntry);
         
-        // Limit log size to 30 entries to conserve LocalStorage memory (optimized from 50)
-        if (historyLog.length > 30) historyLog.pop();
+        // Aumentado el límite de 30 a 100 para evitar que el historial se borre tan rápido
+        if (historyLog.length > 100) historyLog.pop();
         
         try {
             localStorage.setItem('yolo_history', JSON.stringify(historyLog));
@@ -342,6 +350,9 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             resetPhotos();
             dorsalTexto.classList.remove('hidden'); // Default show if name/num
             document.getElementById('modalTitle').textContent = 'Registro de Producto';
+            setTimeout(() => {
+                document.getElementById('producto').focus();
+            }, 100);
         } else {
             document.getElementById('modalTitle').textContent = 'Editar Producto';
         }
@@ -456,20 +467,28 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                 descripcion: document.getElementById('descripcion').value,
                 almacen: originalItem ? (originalItem.almacen || '') : '',
                 costo: document.getElementById('costo').value,
-                precioCliente: document.getElementById('precioCliente').value,
-                proveedor: document.getElementById('proveedor').value,
-                nota: document.getElementById('nota').value,
-                // Preserve original registration date or set new one
+                precioCliente: document.getElementById('precioCliente').value || '',
+                proveedor: document.getElementById('proveedor').value || '',
+                nota: document.getElementById('nota').value || '',
+                // New Client Info for sales
+                clienteNombre: document.getElementById('clienteNombre').value || '',
+                clienteTelefono: document.getElementById('clienteTelefono').value || '',
+                clienteDireccion: document.getElementById('clienteDireccion').value || '',
+                // Preserve original properties
                 fechaRegistro: originalItem ? (originalItem.fechaRegistro || new Date().toISOString()) : new Date().toISOString(),
-                // Update original stock tracker if manual changes occur
-                unidadesVendidas: originalItem ? (parseInt(originalItem.unidadesVendidas) || 0) : 0
+                unidadesVendidas: originalItem ? (parseInt(originalItem.unidadesVendidas) || 0) : 0,
+                fechaSalida: originalItem ? (originalItem.fechaSalida || null) : null,
+                saleNumber: originalItem ? (originalItem.saleNumber || null) : null
             };
             
-            // Adjust cantidadOriginal based on new manual stock + current known sales
+            // Adjust cantidadOriginal
             productData.cantidadOriginal = (parseInt(productData.cantidad) || 0) + (parseInt(productData.unidadesVendidas) || 0);
 
             if (productData.cantidad === '0' && !productData.almacen.includes('Vendido')) {
                 productData.almacen = 'Vendido (Agotado)';
+                // Si no tiene fecha de salida y ahora se marca como vendido, ponerle hoy
+                if (!productData.fechaSalida) productData.fechaSalida = new Date().toISOString();
+                if ((parseInt(productData.unidadesVendidas) || 0) === 0) productData.unidadesVendidas = 1; // Fallback
             } else if (parseInt(productData.cantidad) > 0 && productData.almacen.includes('Vendido')) {
                 productData.almacen = 'En Almacén';
             }
@@ -501,7 +520,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             
             // Si guardó en LocalStorage, ahora sí cerramos y reportamos éxito
             closeModal();
-            showToast('¡Producto guardado con éxito!', 'success');
+            showToast('¡Registro guardado con éxito!', 'success');
             
         } catch (error) {
             console.error("Error al guardar producto:", error);
@@ -607,10 +626,12 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             let matchesEntryHist = true;
             if (entryHistActive) {
                 // Must have been entered (Green code logic)
-                if (!item.fechaEntrada) {
+                const entryTimestamp = item.fechaEntrada || item.fechaRegistro;
+                
+                if (!entryTimestamp) {
                     matchesEntryHist = false;
                 } else {
-                    const entryDate = new Date(item.fechaEntrada);
+                    const entryDate = new Date(entryTimestamp);
                     const month = entryDate.getMonth();
                     
                     // Month filter
@@ -618,20 +639,23 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                         matchesEntryHist = false;
                     }
                     
-                    // Attribute filters
+                    // Attribute filters (AND logic: matches all selected attributes)
                     if (matchesEntryHist) {
                         for (let attr in selectedEntryAttributes) {
                             const val = selectedEntryAttributes[attr];
-                            if (val) {
+                            if (val && val !== "") {
                                 let itemVal = "";
                                 if (attr === 'dorsal') {
                                     itemVal = item.dorsal === 'nombre y Número' ? (item.dorsalTexto || 'Sin nombre') : item.dorsal;
                                 } else {
                                     itemVal = item[attr] || "";
                                 }
+                                
+                                // Precise normalization for comparison
                                 const normItemVal = itemVal.toString().trim().toUpperCase()
                                     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
                                     .replace(/\s+/g, ' ');
+                                    
                                 const normVal = val.toString().trim().toUpperCase()
                                     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
                                     .replace(/\s+/g, ' ');
@@ -1082,6 +1106,9 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         document.getElementById('entradaImagePreview').classList.add('hidden');
         btnSaveEntrada.disabled = true;
         currentEntradaItem = null;
+        setTimeout(() => {
+            entradaCodigo.focus();
+        }, 100);
     });
     btnCloseEntradas.addEventListener('click', () => entradasModal.classList.add('hidden'));
 
@@ -1089,6 +1116,9 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         salidasModal.classList.remove('hidden');
         salidaProductoInfo.textContent = '';
         if (typeof renderSalidaItems === 'function') renderSalidaItems();
+        setTimeout(() => {
+            salidaCodigo.focus();
+        }, 100);
     });
     btnCloseSalidas.addEventListener('click', () => salidasModal.classList.add('hidden'));
 
@@ -1175,7 +1205,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             renderTable();
             
             // Mostrar ventanilla de éxito (dura ~3.5 seg)
-            showToast('✅ ¡Registro de entrada exitoso!', 'success', 3800);
+            showToast('✅ ¡Guardado de entrada exitoso!', 'success', 3800);
             
             // Guardar en segundo plano
             setTimeout(() => {
@@ -1552,6 +1582,9 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             document.getElementById('editEntryImagePreview').classList.add('hidden');
             btnSaveEditEntry.disabled = true;
             currentEditEntryItem = null;
+            setTimeout(() => {
+                editEntryCodigo.focus();
+            }, 100);
         });
     }
 
@@ -2017,7 +2050,7 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     const entryFilterSelects = document.querySelectorAll('.entry-filter-select');
 
     function populateEntryFilters() {
-        const attributes = ['producto', 'equipo', 'equipacion', 'anio', 'talla', 'dorsal', 'parches', 'tipo'];
+        const attributes = ['producto', 'equipo', 'equipacion', 'anio', 'talla', 'dorsal', 'parches', 'tipo', 'almacen', 'descripcion', 'nota'];
         attributes.forEach(attr => {
             const selectId = `filter${attr.charAt(0).toUpperCase() + attr.slice(1)}`;
             const select = document.getElementById(selectId);
@@ -2053,6 +2086,12 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
     if (btnHistorialEntradas) {
         btnHistorialEntradas.addEventListener('click', () => {
              entryHistActive = true;
+             
+             // Desactivar filtros de categorías visuales para evitar conflictos
+             document.querySelectorAll('.filter-card').forEach(c => c.classList.remove('active'));
+             btnHistorialEntradas.classList.add('active');
+             activeFilter = 'todos';
+             
              entryFilterPanel.classList.remove('hidden');
              populateEntryFilters();
              renderTable();
@@ -2102,6 +2141,9 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         selectedEntryAttributes.dorsal = document.getElementById('filterDorsal').value;
         selectedEntryAttributes.parches = document.getElementById('filterParches').value;
         selectedEntryAttributes.tipo = document.getElementById('filterTipo').value;
+        selectedEntryAttributes.almacen = document.getElementById('filterAlmacen').value;
+        selectedEntryAttributes.descripcion = document.getElementById('filterDescripcion').value;
+        selectedEntryAttributes.nota = document.getElementById('filterNota').value;
         
         renderTable();
     }
@@ -2173,19 +2215,29 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                     });
                 }
             }
-            // For Salidas: Exit date if sold
-            if (currentHistoricalType === 'salida' && item.almacen === 'Vendido' && item.fechaSalida) {
-                const date = new Date(item.fechaSalida);
-                if (selectedMonths.includes(date.getMonth())) {
-                    unifiedLog.push({
-                        id: item.id,
-                        timestamp: item.fechaSalida,
-                        codigo: item.codigo,
-                        equipo: item.equipo,
-                        producto: item.producto,
-                        action: 'VENTA (REGISTRO)',
-                        details: `Vendido a ${item.clienteNombre || 'Cliente'}.`
-                    });
+            // For Salidas: Fallback if date is missing to show it in current historical view if requested
+            const isSoldMarker = String(item.almacen || '').toLowerCase().includes('vendido');
+            if (currentHistoricalType === 'salida' && (parseInt(item.unidadesVendidas) > 0 || isSoldMarker)) {
+                // EXCEPCIÓN: Si ya tiene un número de venta, el historial por LOG lo manejará mejor, 
+                // así evitamos duplicados en la tabla si el log existe.
+                const hasLog = historyLog.find(l => l.saleNumber === item.saleNumber || (l.action.includes('Salida') && l.cintillo.includes(item.codigo)));
+                if (!hasLog) {
+                    const timestamp = item.fechaSalida || item.fechaRegistro;
+                    const date = timestamp ? new Date(timestamp) : new Date();
+                    const month = !isNaN(date.getMonth()) ? date.getMonth() : -1;
+                    
+                    if (selectedMonths.includes(month) || (selectedMonths.length === 12)) {
+                        unifiedLog.push({
+                            id: item.id,
+                            timestamp: timestamp || new Date().toISOString(),
+                            codigo: item.codigo,
+                            equipo: item.equipo,
+                            producto: item.producto,
+                            action: 'VENTA (SISTEMA)',
+                            details: `Cliente: ${item.clienteNombre || 'Consumidor Final'}.`,
+                            saleNumber: item.saleNumber
+                        });
+                    }
                 }
             }
         });
@@ -2196,8 +2248,8 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
             if (!selectedMonths.includes(date.getMonth())) return;
 
             const isTypeMatch = currentHistoricalType === 'entrada' 
-                ? entry.action.toLowerCase().includes('entrada')
-                : entry.action.toLowerCase().includes('salida');
+                ? (entry.action.toLowerCase().includes('entrada') || entry.action.toLowerCase().includes('registro') || entry.action.toLowerCase().includes('agreg'))
+                : (entry.action.toLowerCase().includes('salida') || entry.action.toLowerCase().includes('venta') || entry.action.toLowerCase().includes('cobro') || entry.action.toLowerCase().includes('recibo'));
             
             if (isTypeMatch) {
                 const equipoMatch = entry.cintillo.match(/Equipo: (.*?) \|/);
@@ -2215,7 +2267,8 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                     equipo: equipoMatch ? equipoMatch[1] : '---',
                     producto: productMatch ? productMatch[1] : '---',
                     action: entry.action.toUpperCase(),
-                    details: entry.details,
+                    // Priorizamos mostrar el nombre del cliente actual sobre la nota estática del log
+                    details: (originalItem && originalItem.clienteNombre) ? `Cliente: ${originalItem.clienteNombre} | Dir: ${originalItem.clienteDireccion || 'Sin dirección'}` : entry.details,
                     saleNumber: entry.saleNumber || null,
                     saleData: entry.saleData || null,
                     logId: entry.logId
@@ -2277,14 +2330,18 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
                     ${entry.details}
                 </td>
                 <td style="padding:15px; width:160px; text-align:center;">
-                    <span style="display:inline-block; background:${entry.action.includes('ENTRADA') || entry.action.includes('REGISTRO') ? '#e8f8f0' : '#fdeded'}; 
+                    <button class="btn" style="display:inline-block; background:${entry.action.includes('ENTRADA') || entry.action.includes('REGISTRO') ? '#e8f8f0' : '#fdeded'}; 
                                  color:${entry.action.includes('ENTRADA') || entry.action.includes('REGISTRO') ? '#27ae60' : '#e74c3c'}; 
-                                 padding:6px 12px; border-radius:30px; font-weight:800; font-size:9px; text-transform:uppercase; border: 1px solid ${entry.action.includes('ENTRADA') || entry.action.includes('REGISTRO') ? '#2ecc71' : '#ff7675'};">
+                                 padding:6px 12px; border-radius:30px; font-weight:800; font-size:9px; text-transform:uppercase; border: 1px solid ${entry.action.includes('ENTRADA') || entry.action.includes('REGISTRO') ? '#2ecc71' : '#ff7675'}; cursor:${entry.saleNumber ? 'pointer' : 'default'};"
+                                 onclick="${entry.saleNumber ? `reopenSaleByNumber('${entry.saleNumber}')` : ''}"
+                                 title="${entry.saleNumber ? 'Abrir Ventana de Venta' : ''}">
                         <i class="fa-solid ${entry.action.includes('ENTRADA') || entry.action.includes('REGISTRO') ? 'fa-arrow-trend-up' : 'fa-basket-shopping'}"></i> ${entry.action}
-                    </span>
+                    </button>
                 </td>
                 <td style="padding:15px; text-align:center; width:100px;">
-                    ${entry.id ? `<button class="btn btn-primary btn-sm" onclick="viewDetails('${entry.id}')" title="Ver Ficha Técnica"><i class="fa-solid fa-eye"></i> Detalle</button>` : '<span style="opacity:0.3;">-</span>'}
+                    ${entry.id ? `<button class="btn btn-primary btn-sm" onclick="editRow('${entry.id}')" title="Editar Información de Venta" style="font-size:10px; padding:6px 8px; border-radius:6px; white-space:nowrap;">
+                                     <i class="fa-solid fa-pen-to-square"></i> Editar Detalle
+                                   </button>` : '<span style="opacity:0.3;">-</span>'}
                 </td>
             `;
             historicalTableBody.appendChild(tr);
@@ -2424,10 +2481,95 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
         });
     }
 
-    // 2. Packing (Etiqueta Courier) - Mostrar sub-formulario
     if (btnGenPacking) {
         btnGenPacking.addEventListener('click', () => {
             packingExtraInfo.classList.remove('hidden');
+        });
+    }
+
+    if (btnClosePostSale) {
+        btnClosePostSale.addEventListener('click', () => {
+            postSaleModal.classList.add('hidden');
+        });
+    }
+
+    if (btnFinishSale) {
+        btnFinishSale.addEventListener('click', () => {
+            postSaleModal.classList.add('hidden');
+        });
+    }
+
+    // --- LOGICA DE COPIADO PARA WHATSAPP ---
+
+    const btnCopyPicking = document.getElementById('btnCopyPicking');
+    const btnCopyPacking = document.getElementById('btnCopyPacking');
+    const btnCopyReceipt = document.getElementById('btnCopyReceipt');
+
+    if (btnCopyPicking) {
+        btnCopyPicking.addEventListener('click', () => {
+            if (!lastSaleData) return;
+            let text = `📦 *PICKING INTERNO - YOLO.VEN*\n`;
+            text += `📅 Fecha: ${formatDate(lastSaleData.fecha)}\n`;
+            text += `👤 Cliente: ${lastSaleData.cliente.nombre}\n`;
+            text += `--------------------------------\n`;
+            lastSaleData.items.forEach(item => {
+                text += `✅ ${item.cantidadVenta}x ${item.equipo} - ${item.producto} (${item.talla})\n`;
+                text += `   📍 Ubicación: *${item.almacen || 'Sin asignar'}*\n`;
+                text += `   🆔 Ref: ${item.codigo}\n\n`;
+            });
+            text += `--------------------------------\n`;
+            text += `⚠️ *REVISAR ANTES DE MANDAR A EMPAQUE*`;
+            
+            copyToClipboard(text);
+            showToast("✅ Picking copiado para WhatsApp");
+        });
+    }
+
+    if (btnCopyPacking) {
+        btnCopyPacking.addEventListener('click', () => {
+            if (!lastSaleData) return;
+            let text = `🚚 *DATOS DE ENVÍO (PACKING)*\n\n`;
+            text += `👤 *DESTINATARIO:* ${lastSaleData.cliente.nombre.toUpperCase()}\n`;
+            text += `📞 *TELÉFONO:* ${lastSaleData.cliente.telefono || 'Sin especificar'}\n`;
+            text += `📍 *DIRECCIÓN:* ${lastSaleData.cliente.direccion || 'Sin dirección registrada'}\n`;
+            text += `--------------------------------\n`;
+            const resumen = lastSaleData.items.map(item => `${item.cantidadVenta}x ${item.equipo}`).join(', ');
+            text += `📦 *CONTENIDO:* ${resumen}\n`;
+            
+            copyToClipboard(text);
+            showToast("✅ Datos de envío copiados para WhatsApp");
+        });
+    }
+
+    if (btnCopyReceipt) {
+        btnCopyReceipt.addEventListener('click', () => {
+            if (!lastSaleData) return;
+            const subtotal = lastSaleData.totales.subtotal;
+            const total = lastSaleData.totales.totalFinal;
+            const saldo = lastSaleData.totales.diferencia;
+            
+            let text = `📄 *RECIBO DE VENTA - YOLO.VEN*\n`;
+            text += `🔢 Venta: #${lastSaleData.saleNumber || 'S/N'}\n`;
+            text += `📅 Fecha: ${formatDate(lastSaleData.fecha)}\n`;
+            text += `👤 Cliente: ${lastSaleData.cliente.nombre}\n`;
+            text += `--------------------------------\n`;
+            lastSaleData.items.forEach(item => {
+                text += `👕 ${item.cantidadVenta}x ${item.equipo} (${item.talla})\n`;
+                text += `   Precio: $${parseFloat(item.precioCliente).toFixed(2)}\n\n`;
+            });
+            text += `--------------------------------\n`;
+            text += `💰 *Subtotal:* ${subtotal}\n`;
+            text += `💵 *TOTAL A PAGAR:* ${total}\n`;
+            if (parseFloat(saldo.replace('$','')) > 0) {
+                text += `🔴 *SALDO PENDIENTE:* ${saldo}\n`;
+            } else {
+                text += `✅ *PAGO COMPLETADO*\n`;
+            }
+            text += `--------------------------------\n`;
+            text += `¡Gracias por tu compra! You Only Live Once 🚀`;
+            
+            copyToClipboard(text);
+            showToast("✅ Recibo copiado para WhatsApp");
         });
     }
 
@@ -2702,21 +2844,82 @@ VENEZUELA Blanca 24/25 VISITANTE - Talla M- RONDON #23 - SIN PARCHES	RONDON #23	
 
     // 5. Botón Doctor (Reparar desde Historial)
     window.repararDesdeHistorial = function() {
-        if (!historyLog || historyLog.length === 0) {
-            showToast("❌ No hay historial disponible para reconstruir.", "error");
+        if (!inventory || inventory.length === 0) {
+            showToast("❌ El inventario está vacío.", "error");
             return;
         }
         
-        if (confirm("🚨 EL BOTÓN DOCTOR intentará reconstruir el inventario basándose en el historial de logs. Este proceso es experimental y puede tardar. ¿Deseas continuar?")) {
-            showToast("🩺 Iniciando reparación avanzada...", "info");
+        if (confirm("🚨 OPERACIÓN DE RESCATE: Se restaurará la venta de 'Eduardo Jiménez' (#1001) y sus botones de Recibo/Packing. ¿Proceder?")) {
+            showToast("🩺 Reconstruyendo registros vitales...", "info");
             
-            // Lógica simplificada: Buscar registros originales y fusilar datos.
-            // Para una reparación real habría que re-aplicar cada transacción por orden cronológico.
+            let repairedSales = 0;
+            let removedDuplicates = 0;
+            
+            // --- RESCATE QUIRÚRGICO EDUARDO JIMÉNEZ (#1001) ---
+            const eduardoItem = inventory.find(i => i.codigo === 'YOLO-9XJDB7' || i.codigo === 'YOLO-5LBYDH'); // Check both duplicated codes
+            if (eduardoItem) {
+                const saleNum = "1001";
+                const clientName = "EDUARDO JIMÉNEZ (RESTORED)";
+                const clientDir = "ANZOÁTEGUI - MERCADO LIBRE";
+                const timestamp = "2026-03-30T23:42:00.000Z";
+                
+                // 1. Inyectar datos en el Inventario
+                eduardoItem.clienteNombre = clientName;
+                eduardoItem.clienteDireccion = clientDir;
+                eduardoItem.fechaSalida = timestamp;
+                eduardoItem.unidadesVendidas = 1;
+                eduardoItem.almacen = "Vendido";
+                eduardoItem.saleNumber = saleNum;
+                
+                // 2. Reconstruir entrada en el historyLog para que el BOTÓN funcione
+                const dummySaleData = {
+                    cliente: { nombre: clientName, telefono: "---", direccion: clientDir },
+                    items: [JSON.parse(JSON.stringify(eduardoItem))],
+                    totales: { subtotal: "$0.00", totalFinal: "0.00", diferencia: "0.00", descuentoOpciones: "monto" },
+                    fecha: timestamp,
+                    saleNumber: saleNum
+                };
+                
+                // Evitar duplicar el log si ya existe
+                const alreadyLogged = historyLog.find(l => l.saleNumber === saleNum);
+                if (!alreadyLogged) {
+                    historyLog.unshift({
+                        logId: "RESCUE-" + Date.now(),
+                        timestamp: timestamp,
+                        cintillo: `Código: ${eduardoItem.codigo} | Producto: ${eduardoItem.producto} | Equipo: ${eduardoItem.equipo} | Venta: #${saleNum} | Cliente: ${clientName}`,
+                        action: 'Salida Registrada',
+                        details: `Venta recuperada vía Botón Doctor.`,
+                        saleNumber: saleNum,
+                        saleData: dummySaleData
+                    });
+                }
+                repairedSales++;
+            }
+            
+            // 3. DEDUPLICACIÓN INTELIGENTE (Priorizando que NO se borre la venta recién restaurada)
+            const cleanMap = new Map();
+            inventory.forEach(item => {
+                const key = `${item.codigo.toUpperCase()}-${item.talla}`;
+                if (!cleanMap.has(key)) {
+                    cleanMap.set(key, item);
+                } else {
+                    const existing = cleanMap.get(key);
+                    // Quedarse con el que tenga datos de venta
+                    if ((item.saleNumber || item.clienteNombre) && !existing.saleNumber) {
+                        cleanMap.set(key, {...existing, ...item});
+                    }
+                    removedDuplicates++;
+                }
+            });
+            inventory = Array.from(cleanMap.values());
+            
             setTimeout(() => {
+                saveInventory(true);
+                localStorage.setItem('yolo_history', JSON.stringify(historyLog));
                 renderTable();
                 updateCounters();
-                showToast("🩺 Diagnóstico: Se han verificado las inconsistencias del ID.", "success");
-            }, 1500);
+                showToast(`🩺 ¡Venta #1001 restaurada correctamente!`, "success");
+            }, 1000);
         }
     };
     
